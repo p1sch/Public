@@ -178,9 +178,9 @@ public class RapportTest {
         ScreenshotTest.png(inhalt(ed), "rapport_2_ausfuellen");
 
         // Unterschrift-Dialog
-        java.lang.reflect.Method m = RapportActivity.class.getDeclaredMethod("unterschreiben");
+        java.lang.reflect.Method m = RapportActivity.class.getDeclaredMethod("unterschreiben", boolean.class);
         m.setAccessible(true);
-        m.invoke(ed);
+        m.invoke(ed, false);
         ShadowLooper.idleMainLooper();
         Dialog d = ShadowDialog.getLatestDialog();
         assertNotNull(d);
@@ -198,6 +198,108 @@ public class RapportTest {
             try (FileOutputStream out = new FileOutputStream(new File(dir, "rapport.pdf"))) {
                 pdf.writeTo(out);
             }
+        }
+    }
+
+    @Test
+    public void dokuUndAbnahme() throws Exception {
+        Context c = RuntimeEnvironment.getApplication();
+        ZeitActivity.testJetzt = ZeiterfassungTest.um(25, 11, 18, 0);
+        Holzliste h = ScreenshotTest.beispiel();
+        beispiel(c, h); // legt Zeiten, Briefkopf, Logo und einen Rapport an
+        long tag = ZeiterfassungTest.um(25, 11, 18, 0);
+
+        // Dokumentation: Anwesende kommen aus den gestempelten Zeiten, keine Stundentabelle
+        Rapport d = Rapport.neu(Rapport.DOKU, tag, h, Zeiten.alle(c), "Vorlage nur für Rapporte", tag);
+        assertEquals("Bautagebuch", d.titel);
+        assertEquals("Max Muster", d.anwesend);
+        assertTrue(d.zeiten.isEmpty());
+        assertEquals("", d.bemerkung);
+        d.anwesend = "Max Muster, Erika Beispiel";
+        d.wetter = "🌧 Regen";
+        d.temperatur = "4";
+        d.eintrag = "Dachlattung Nordseite fertig, Konterlattung Südseite begonnen.";
+        d.behinderungen = "Gerüst an der Giebelseite fehlt noch.";
+        d.fotos.add(foto(c, "foto_doku1.jpg", Color.parseColor("#6D7F94")));
+        h.rapporte.add(d);
+
+        // Abnahme mit Mängeln: zwei Unterschriften, Mängel werden zu dringenden Aufgaben
+        Rapport a = Rapport.neu(Rapport.ABNAHME, tag, h, Zeiten.alle(c), "", tag);
+        assertEquals("Abnahmeprotokoll", a.titel);
+        assertEquals(Zeiten.tagesStart(tag), a.leistungBis);
+        a.abnahmeArt = Rapport.TEILABNAHME;
+        a.ergebnis = Rapport.MIT_MAENGELN;
+        a.leistungVon = ZeiterfassungTest.um(10, 11, 0, 0);
+        a.frist = ZeiterfassungTest.um(9, 12, 0, 0);
+        Rapport.Mangel m1 = new Rapport.Mangel(); m1.text = "Anschluss Dampfbremse an der Traufe nicht verklebt";
+        Rapport.Mangel m2 = new Rapport.Mangel(); m2.text = "Zwei Sparren mit Hobelfehlern im Sichtbereich";
+        Rapport.Mangel m3 = new Rapport.Mangel(); m3.text = "Bohrlöcher in der Fußpfette offen"; m3.erledigt = true;
+        a.maengel.add(m1); a.maengel.add(m2); a.maengel.add(m3);
+        a.unterschrift = RapportDateien.unterschriftSpeichern(c, unterschrift());
+        a.unterzeichner = "Familie Huber";
+        a.unterschriebenAm = ZeiterfassungTest.um(25, 11, 17, 5);
+        a.unterschrift2 = RapportDateien.unterschriftSpeichern(c, unterschrift());
+        a.unterzeichner2 = "Max Muster";
+        a.unterschrieben2Am = ZeiterfassungTest.um(25, 11, 17, 6);
+        h.rapporte.add(a);
+        assertTrue(a.mitMaengeln());
+        int vorher = h.aufgaben.size();
+        assertEquals(2, a.maengelAlsAufgaben(h));        // der beseitigte Mangel nicht
+        assertEquals(0, a.maengelAlsAufgaben(h));        // kein zweites Mal
+        Aufgabe neu = h.aufgaben.get(vorher);
+        assertEquals(Werkzeug.ROT, neu.prio);
+        assertEquals("Mängel aus Abnahme 25.11.2026", neu.abschnitt);
+        assertEquals("Frist bis 09.12.2026", neu.info);
+        Storage.speichern(c, h);
+
+        // Speichern und laden
+        Holzliste g = Storage.laden(c, h.id);
+        assertEquals(3, g.rapporte.size());
+        Rapport a2 = g.rapporte.get(2);
+        assertTrue(a2.istAbnahme());
+        assertEquals(3, a2.maengel.size());
+        assertTrue(a2.maengel.get(2).erledigt);
+        assertTrue(a2.unterschrieben2());
+        assertEquals(Rapport.TEILABNAHME, a2.abnahmeArt);
+        assertEquals("Max Muster, Erika Beispiel", g.rapporte.get(1).anwesende());
+
+        // PDFs als Bilder
+        File dir = new File("build/screenshots");
+        dir.mkdirs();
+        List<Bitmap> sd = RapportPdf.bilder(c, h, d, 2f);
+        List<Bitmap> sa = RapportPdf.bilder(c, h, a, 2f);
+        assertEquals(1, sd.size()); // Bautagebuch ohne Unterschrift, Foto passt auf Seite 1
+        assertEquals(1, sa.size());
+        for (int i = 0; i < sd.size(); i++) speichernPng(sd.get(i), "doku_seite" + (i + 1));
+        for (int i = 0; i < sa.size(); i++) speichernPng(sa.get(i), "abnahme_seite" + (i + 1));
+        assertEquals("Abnahme_2026-11-25_EFH_Huber_Dachstuhl.pdf", RapportPdf.dateiname(h, a));
+        assertEquals("Bautagebuch_2026-11-25_EFH_Huber_Dachstuhl.pdf", RapportPdf.dateiname(h, d));
+
+        // Bildschirme
+        Intent ib = new Intent(c, BaustelleActivity.class);
+        ib.putExtra(BaustelleActivity.EXTRA_ID, h.id);
+        Activity bau = Robolectric.buildActivity(BaustelleActivity.class, ib).setup().get();
+        ShadowLooper.idleMainLooper();
+        ScreenshotTest.png(inhalt(bau), "rapport_0_baustelle");
+        for (Rapport x : new Rapport[]{d, a}) {
+            Intent e = new Intent(c, RapportActivity.class);
+            e.putExtra(RapportActivity.EXTRA_BAUSTELLE, h.id);
+            e.putExtra(RapportActivity.EXTRA_RAPPORT, x.id);
+            Activity ed = Robolectric.buildActivity(RapportActivity.class, e).setup().get();
+            ShadowLooper.idleMainLooper();
+            ScreenshotTest.png(inhalt(ed), x.istDoku() ? "doku_ausfuellen" : "abnahme_ausfuellen");
+        }
+        Intent l = new Intent(c, RapportActivity.class);
+        l.putExtra(RapportActivity.EXTRA_BAUSTELLE, h.id);
+        l.putExtra(RapportActivity.EXTRA_ART, Rapport.ABNAHME);
+        Activity liste = Robolectric.buildActivity(RapportActivity.class, l).setup().get();
+        ShadowLooper.idleMainLooper();
+        ScreenshotTest.png(liste.getWindow().getDecorView(), "abnahme_liste");
+    }
+
+    private static void speichernPng(Bitmap b, String name) throws Exception {
+        try (FileOutputStream out = new FileOutputStream(new File("build/screenshots", name + ".png"))) {
+            b.compress(Bitmap.CompressFormat.PNG, 100, out);
         }
     }
 

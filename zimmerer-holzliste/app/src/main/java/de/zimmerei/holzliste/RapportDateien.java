@@ -43,6 +43,7 @@ public final class RapportDateien {
     public static void loeschen(Context c, Rapport r) {
         for (String f : r.fotos) datei(c, f).delete();
         if (r.unterschrieben()) datei(c, r.unterschrift).delete();
+        if (r.unterschrieben2()) datei(c, r.unterschrift2).delete();
     }
 
     // ================================================================ Firma (Briefkopf)

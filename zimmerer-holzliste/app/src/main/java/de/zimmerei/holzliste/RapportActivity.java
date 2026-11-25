@@ -44,14 +44,16 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Rapport (Tagesbericht) einer Baustelle. Ohne {@link #EXTRA_RAPPORT}: Liste aller Rapporte der Baustelle.
- * Mit: ein Rapport zum Ausfüllen – Stunden kommen aus der Zeiterfassung, Material aus der Materialliste.
- * Danach Vorschau, Unterschrift des Kunden am Handy und PDF senden (WhatsApp, E-Mail …).
+ * Baustellen-Dokumente: Rapport (Stunden + Material), Dokumentation (Bautagebuch) und Abnahme (mit Mängeln).
+ * Ohne {@link #EXTRA_RAPPORT}: Liste der Dokumente einer Art ({@link #EXTRA_ART}). Mit: ein Dokument zum Ausfüllen,
+ * danach Vorschau, Unterschrift am Handy und PDF senden (WhatsApp, E-Mail …).
  */
 public class RapportActivity extends Activity {
 
     public static final String EXTRA_BAUSTELLE = "baustelle";
     public static final String EXTRA_RAPPORT = "rapport";
+    /** Art der Liste: Rapport.RAPPORT, DOKU oder ABNAHME. */
+    public static final String EXTRA_ART = "art";
 
     private static final int REQ_KAMERA = 41, REQ_GALERIE = 42, REQ_LOGO = 43, REQ_SPRACHE_EINTRAG = 44, REQ_SPRACHE_BEH = 45;
     private static final Locale DE = Locale.GERMANY;
@@ -59,6 +61,7 @@ public class RapportActivity extends Activity {
 
     private Holzliste baustelle;
     private Rapport rapport;
+    private String art = Rapport.RAPPORT;
     private LinearLayout inhalt;
     private TextView unterschriftHinweis;
     private EditText eintragFeld, behFeld;
@@ -115,6 +118,8 @@ public class RapportActivity extends Activity {
         String rid = getIntent().getStringExtra(EXTRA_RAPPORT);
         rapport = null;
         if (rid != null) for (Rapport r : baustelle.rapporte) if (r.id.equals(rid)) rapport = r;
+        String a = getIntent().getStringExtra(EXTRA_ART);
+        art = rapport != null ? rapport.art : a != null ? a : Rapport.RAPPORT;
         return rid == null || rapport != null;
     }
 
@@ -127,17 +132,25 @@ public class RapportActivity extends Activity {
         if (neuZeichnen) render();
     }
 
-    /** Jede Änderung nach dem Unterschreiben macht die Unterschrift ungültig. */
+    /** Jede Änderung nach dem Unterschreiben macht die Unterschrift(en) ungültig. */
     private void geaendert() {
-        if (rapport == null || !rapport.unterschrieben()) return;
-        RapportDateien.datei(this, rapport.unterschrift).delete();
+        if (rapport == null || !(rapport.unterschrieben() || rapport.unterschrieben2())) return;
+        if (rapport.unterschrieben()) RapportDateien.datei(this, rapport.unterschrift).delete();
+        if (rapport.unterschrieben2()) RapportDateien.datei(this, rapport.unterschrift2).delete();
         rapport.unterschrift = "";
         rapport.unterschriebenAm = 0;
+        rapport.unterschrift2 = "";
+        rapport.unterschrieben2Am = 0;
         if (unterschriftHinweis != null) unterschriftHinweis.setVisibility(View.GONE);
-        Toast.makeText(this, "Rapport geändert – die Unterschrift wurde entfernt. Bitte neu unterschreiben lassen.", Toast.LENGTH_LONG).show();
+        Toast.makeText(this, name(art) + " geändert – die Unterschrift wurde entfernt. Bitte neu unterschreiben lassen.", Toast.LENGTH_LONG).show();
     }
 
-    // ================================================================ Liste der Rapporte
+    /** „Rapport“, „Dokumentation“, „Abnahme“. */
+    private static String name(String art) {
+        return Rapport.ABNAHME.equals(art) ? "Abnahme" : Rapport.DOKU.equals(art) ? "Dokumentation" : "Rapport";
+    }
+
+    // ================================================================ Liste
 
     void render() {
         inhalt.removeAllViews();
@@ -147,7 +160,8 @@ public class RapportActivity extends Activity {
     }
 
     private void renderListe() {
-        setTitle("📋 Rapporte");
+        boolean abn = Rapport.ABNAHME.equals(art), doku = Rapport.DOKU.equals(art);
+        setTitle(abn ? "✅ Abnahmen" : doku ? "📷 Dokumentation" : "📋 Rapporte");
         TextView kopf = Ui.text(this, baustelle.titel(), 20, Ui.DUNKEL, true);
         kopf.setPadding(Ui.dp(this, 4), 0, 0, Ui.dp(this, 10));
         inhalt.addView(kopf);
@@ -158,17 +172,23 @@ public class RapportActivity extends Activity {
             inhalt.addView(f, zeile(10));
         }
 
-        Button neu = knopf("＋  Rapport für heute", Ui.PRIMAER, Ui.WEISS, false);
+        Button neu = knopf(abn ? "＋  Neue Abnahme" : doku ? "＋  Eintrag für heute" : "＋  Rapport für heute", Ui.PRIMAER, Ui.WEISS, false);
         neu.setOnClickListener(v -> neuerRapport(ZeitActivity.jetzt()));
         inhalt.addView(neu, hoch(56, 6));
-        Button anderer = knopf("📅  Rapport für anderen Tag …", Ui.WEISS, Ui.PRIMAER, true);
+        Button anderer = knopf("📅  " + (abn ? "Abnahme" : doku ? "Eintrag" : "Rapport") + " für anderen Tag …", Ui.WEISS, Ui.PRIMAER, true);
         anderer.setOnClickListener(v -> datumWaehlen(ZeitActivity.jetzt(), this::neuerRapport));
         inhalt.addView(anderer, hoch(48, 16));
 
-        List<Rapport> l = new ArrayList<>(baustelle.rapporte);
+        List<Rapport> l = new ArrayList<>();
+        for (Rapport r : baustelle.rapporte) if (art.equals(r.art)) l.add(r);
         Collections.sort(l, (a, b) -> Long.compare(b.tag, a.tag));
         if (l.isEmpty()) {
-            TextView t = Ui.text(this, "Noch kein Rapport.\n\nStunden und Material dieser Baustelle werden automatisch übernommen – "
+            TextView t = Ui.text(this, abn
+                    ? "Noch keine Abnahme.\n\nTeil- oder Gesamtabnahme mit Ergebnis, Mängelliste und Frist – Auftraggeber und "
+                    + "Auftragnehmer unterschreiben am Handy. Offene Mängel landen auf Wunsch direkt bei den Aufgaben."
+                    : doku ? "Noch kein Eintrag im Bautagebuch.\n\nWer war da, Wetter, was wurde gemacht, Behinderungen und Fotos – "
+                    + "als PDF für den Auftraggeber oder die eigene Ablage."
+                    : "Noch kein Rapport.\n\nStunden und Material dieser Baustelle werden automatisch übernommen – "
                     + "du ergänzt nur, was gemacht wurde, und lässt den Kunden am Handy unterschreiben.", 15, Ui.GRAU, false);
             t.setGravity(Gravity.CENTER);
             t.setPadding(Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16), 0);
@@ -176,13 +196,32 @@ public class RapportActivity extends Activity {
         }
         for (Rapport r : l) {
             StringBuilder s = new StringBuilder();
-            s.append(r.summeMin() == 0 ? "keine Stunden" : RapportPdf.dauer(r.summeMin()) + " h");
-            if (!r.material.isEmpty()) s.append("  ·  ").append(r.material.size()).append(" Material");
-            if (!r.fotos.isEmpty()) s.append("  ·  ").append(r.fotos.size()).append(r.fotos.size() == 1 ? " Foto" : " Fotos");
-            s.append(r.unterschrieben() ? "\n✍ unterschrieben" + (r.unterzeichner.isEmpty() ? "" : " von " + r.unterzeichner)
-                    : "\n○ noch nicht unterschrieben");
-            View k = karte("📋  " + new SimpleDateFormat("EE, dd.MM.yyyy", DE).format(new Date(r.tag)) + "  ·  " + r.titel,
-                    s.toString(), r.unterschrieben() ? Ui.GRUEN : Ui.PRIMAER);
+            int farbe = Ui.PRIMAER;
+            if (abn) {
+                int offen = 0;
+                for (Rapport.Mangel m : r.maengel) if (!m.erledigt) offen++;
+                s.append(r.abnahmeArt).append("  ·  ").append(r.ergebnis);
+                if (r.mitMaengeln()) s.append("\n").append(offen == 0 ? "✓ alle Mängel beseitigt" : "⚠ " + offen + " offene Mängel")
+                        .append(r.frist == 0 ? "" : "  ·  Frist " + Zeiten.datum(r.frist));
+                farbe = Rapport.ABGELEHNT.equals(r.ergebnis) ? ZeitActivity.ROT : r.mitMaengeln() && offen > 0 ? Ui.AKZENT
+                        : r.unterschrieben() ? Ui.GRUEN : Ui.PRIMAER;
+                s.append(r.unterschrieben() && r.unterschrieben2() ? "\n✍ beide unterschrieben"
+                        : r.unterschrieben() || r.unterschrieben2() ? "\n✍ eine Unterschrift fehlt" : "\n○ noch nicht unterschrieben");
+            } else if (doku) {
+                String e = r.eintrag.trim().replace('\n', ' ');
+                s.append(e.isEmpty() ? "noch nichts eingetragen" : e.length() > 70 ? e.substring(0, 67) + " …" : e);
+                if (!r.fotos.isEmpty()) s.append("\n").append(r.fotos.size()).append(r.fotos.size() == 1 ? " Foto" : " Fotos");
+                if (!r.wetter.isEmpty()) s.append(r.fotos.isEmpty() ? "\n" : "  ·  ").append(r.wetter);
+            } else {
+                s.append(r.summeMin() == 0 ? "keine Stunden" : RapportPdf.dauer(r.summeMin()) + " h");
+                if (!r.material.isEmpty()) s.append("  ·  ").append(r.material.size()).append(" Material");
+                if (!r.fotos.isEmpty()) s.append("  ·  ").append(r.fotos.size()).append(r.fotos.size() == 1 ? " Foto" : " Fotos");
+                s.append(r.unterschrieben() ? "\n✍ unterschrieben" + (r.unterzeichner.isEmpty() ? "" : " von " + r.unterzeichner)
+                        : "\n○ noch nicht unterschrieben");
+                if (r.unterschrieben()) farbe = Ui.GRUEN;
+            }
+            View k = karte(Rapport.symbol(r.art) + "  " + new SimpleDateFormat("EE, dd.MM.yyyy", DE).format(new Date(r.tag)) + "  ·  " + r.titel,
+                    s.toString(), farbe);
             k.setOnClickListener(v -> oeffnen(r));
             k.setOnLongClickListener(v -> { loeschenFragen(r); return true; });
             inhalt.addView(k, zeile(8));
@@ -190,20 +229,22 @@ public class RapportActivity extends Activity {
     }
 
     private void neuerRapport(long tag) {
-        for (Rapport r : baustelle.rapporte) {
-            if (Zeiten.tagesStart(r.tag) == Zeiten.tagesStart(tag)) {
-                new AlertDialog.Builder(this).setTitle("Für diesen Tag gibt es schon einen Rapport")
-                        .setPositiveButton("Öffnen", (d, w) -> oeffnen(r))
-                        .setNeutralButton("Neuen anlegen", (d, w) -> anlegen(tag))
-                        .setNegativeButton("Abbrechen", null).show();
-                return;
+        if (!Rapport.ABNAHME.equals(art)) {
+            for (Rapport r : baustelle.rapporte) {
+                if (art.equals(r.art) && Zeiten.tagesStart(r.tag) == Zeiten.tagesStart(tag)) {
+                    new AlertDialog.Builder(this).setTitle("Für diesen Tag gibt es schon " + (Rapport.DOKU.equals(art) ? "einen Eintrag" : "einen Rapport"))
+                            .setPositiveButton("Öffnen", (d, w) -> oeffnen(r))
+                            .setNeutralButton("Neu anlegen", (d, w) -> anlegen(tag))
+                            .setNegativeButton("Abbrechen", null).show();
+                    return;
+                }
             }
         }
         anlegen(tag);
     }
 
     private void anlegen(long tag) {
-        Rapport r = Rapport.neu(tag, baustelle, Zeiten.alle(this), RapportDateien.bemerkungVorlage(this), ZeitActivity.jetzt());
+        Rapport r = Rapport.neu(art, tag, baustelle, Zeiten.alle(this), RapportDateien.bemerkungVorlage(this), ZeitActivity.jetzt());
         baustelle.rapporte.add(r);
         speichern(false);
         oeffnen(r);
@@ -217,7 +258,7 @@ public class RapportActivity extends Activity {
     }
 
     private void loeschenFragen(Rapport r) {
-        new AlertDialog.Builder(this).setTitle("Rapport löschen?")
+        new AlertDialog.Builder(this).setTitle(name(r.art) + " löschen?")
                 .setMessage(new SimpleDateFormat("EEEE, dd.MM.yyyy", DE).format(new Date(r.tag)) + " – mit Fotos und Unterschrift.")
                 .setPositiveButton("Löschen", (d, w) -> {
                     RapportDateien.loeschen(this, r);
@@ -228,11 +269,11 @@ public class RapportActivity extends Activity {
                 .setNegativeButton("Abbrechen", null).show();
     }
 
-    // ================================================================ Ein Rapport
+    // ================================================================ Ein Dokument
 
     private void renderRapport() {
-        setTitle("📋 Rapport");
         Rapport r = rapport;
+        setTitle(Rapport.symbol(r.art) + " " + (r.istDoku() ? "Dokumentation" : r.istAbnahme() ? "Abnahme" : "Rapport"));
 
         // Kopf: Baustelle, Datum, Titel
         LinearLayout kopf = box();
@@ -247,29 +288,41 @@ public class RapportActivity extends Activity {
         }));
         kopf.addView(datum, zeile(0));
         kopf.addView(beschriftung("Titel"));
-        EditText titel = eingabe(r.titel, "Rapport", false);
+        EditText titel = eingabe(r.titel, Rapport.standardTitel(r.art), false);
         beiText(titel, s -> r.titel = s);
         kopf.addView(titel);
         inhalt.addView(kopf, zeile(10));
 
-        if (r.unterschrieben()) {
-            unterschriftHinweis = Ui.text(this, "✍  Unterschrieben" + (r.unterzeichner.isEmpty() ? "" : " von " + r.unterzeichner)
-                    + " am " + new SimpleDateFormat("dd.MM.yyyy, HH:mm", DE).format(new Date(r.unterschriebenAm)) + " Uhr"
-                    + "\nÄnderungen entfernen die Unterschrift.", 14, Ui.GRUEN, true);
+        if (r.unterschrieben() || r.unterschrieben2()) {
+            StringBuilder t = new StringBuilder();
+            if (r.unterschrieben()) t.append("✍  ").append(r.istAbnahme() ? "Auftraggeber" : "Unterschrieben")
+                    .append(r.unterzeichner.isEmpty() ? "" : (r.istAbnahme() ? ": " : " von ") + r.unterzeichner)
+                    .append(" am ").append(new SimpleDateFormat("dd.MM.yyyy, HH:mm", DE).format(new Date(r.unterschriebenAm))).append(" Uhr");
+            if (r.unterschrieben2()) t.append(t.length() > 0 ? "\n" : "").append("✍  Auftragnehmer")
+                    .append(r.unterzeichner2.isEmpty() ? "" : ": " + r.unterzeichner2)
+                    .append(" am ").append(new SimpleDateFormat("dd.MM.yyyy, HH:mm", DE).format(new Date(r.unterschrieben2Am))).append(" Uhr");
+            t.append("\nÄnderungen entfernen die Unterschrift.");
+            unterschriftHinweis = Ui.text(this, t.toString(), 14, Ui.GRUEN, true);
             int p = Ui.dp(this, 12);
             unterschriftHinweis.setPadding(p, p, p, p);
             unterschriftHinweis.setBackground(Ui.rounded(Ui.WEISS, Ui.GRUEN, Ui.dp(this, 12), Ui.dp(this, 2)));
             inhalt.addView(unterschriftHinweis, zeile(10));
         }
 
-        inhalt.addView(zeitenKarte(), zeile(10));
-        inhalt.addView(materialKarte(), zeile(10));
-        inhalt.addView(dokuKarte(), zeile(10));
+        if (r.istRapport()) {
+            inhalt.addView(zeitenKarte(), zeile(10));
+            inhalt.addView(materialKarte(), zeile(10));
+            inhalt.addView(dokuKarte(), zeile(10));
+        } else if (r.istDoku()) {
+            inhalt.addView(dokuKarte(), zeile(10));
+        } else {
+            inhalt.addView(abnahmeKarte(), zeile(10));
+        }
         inhalt.addView(fotoKarte(), zeile(10));
 
         LinearLayout bem = box();
-        bem.addView(titelZeile("💬  Bemerkung / Hinweis", Ui.GRAU));
-        EditText bemerkung = eingabe(r.bemerkung, "z. B. Hinweis zur Abrechnung (Vorlage im Menü ⋮)", true);
+        bem.addView(titelZeile("💬  Bemerkung" + (r.istRapport() ? " / Hinweis" : ""), Ui.GRAU));
+        EditText bemerkung = eingabe(r.bemerkung, r.istRapport() ? "z. B. Hinweis zur Abrechnung (Vorlage im Menü ⋮)" : "optional", true);
         beiText(bemerkung, s -> r.bemerkung = s);
         bem.addView(bemerkung);
         inhalt.addView(bem, zeile(16));
@@ -277,12 +330,124 @@ public class RapportActivity extends Activity {
         Button vorschau = knopf("👁  Vorschau", Ui.WEISS, Ui.PRIMAER, true);
         vorschau.setOnClickListener(v -> vorschau());
         inhalt.addView(vorschau, hoch(52, 8));
-        Button unter = knopf(r.unterschrieben() ? "✍  Neu unterschreiben" : "✍  Kunde unterschreibt", Ui.AKZENT, Ui.WEISS, false);
-        unter.setOnClickListener(v -> unterschreiben());
-        inhalt.addView(unter, hoch(56, 8));
+        if (r.istAbnahme()) {
+            Button ag = knopf(r.unterschrieben() ? "✍  Auftraggeber: neu" : "✍  Auftraggeber unterschreibt", Ui.AKZENT, Ui.WEISS, false);
+            ag.setOnClickListener(v -> unterschreiben(false));
+            inhalt.addView(ag, hoch(56, 8));
+            Button an = knopf(r.unterschrieben2() ? "✍  Auftragnehmer: neu" : "✍  Auftragnehmer unterschreibt", Ui.WEISS, Ui.AKZENT, true);
+            an.setOnClickListener(v -> unterschreiben(true));
+            inhalt.addView(an, hoch(52, 8));
+        } else if (r.istDoku()) {
+            Button unter = knopf(r.unterschrieben() ? "✍  Neu unterschreiben" : "✍  Unterschreiben lassen (optional)", Ui.WEISS, Ui.AKZENT, true);
+            unter.setOnClickListener(v -> unterschreiben(false));
+            inhalt.addView(unter, hoch(52, 8));
+        } else {
+            Button unter = knopf(r.unterschrieben() ? "✍  Neu unterschreiben" : "✍  Kunde unterschreibt", Ui.AKZENT, Ui.WEISS, false);
+            unter.setOnClickListener(v -> unterschreiben(false));
+            inhalt.addView(unter, hoch(56, 8));
+        }
         Button senden = knopf("📤  PDF senden", Ui.PRIMAER, Ui.WEISS, false);
         senden.setOnClickListener(v -> senden());
         inhalt.addView(senden, hoch(56, 0));
+    }
+
+    // ---------------------------------------------------------------- Abnahme
+
+    private View abnahmeKarte() {
+        Rapport r = rapport;
+        LinearLayout k = box();
+        k.addView(titelZeile("✅  Abnahme", Ui.GRUEN));
+        k.addView(beschriftung("Art der Abnahme"));
+        LinearLayout artZeile = new LinearLayout(this);
+        for (String a : new String[]{Rapport.TEILABNAHME, Rapport.GESAMTABNAHME}) {
+            TextView c = chipText(a);
+            chip(c, a.equals(r.abnahmeArt), Ui.GRUEN);
+            c.setGravity(Gravity.CENTER);
+            c.setOnClickListener(v -> { r.abnahmeArt = a; geaendert(); speichern(true); });
+            artZeile.addView(c, halb(a.equals(Rapport.TEILABNAHME), -1));
+        }
+        k.addView(artZeile);
+
+        k.addView(beschriftung("Leistung erbracht"));
+        LinearLayout zr = new LinearLayout(this);
+        Button von = feldKnopf("Von  " + (r.leistungVon == 0 ? "–" : Zeiten.datum(r.leistungVon)));
+        von.setOnClickListener(v -> datumWaehlen(r.leistungVon == 0 ? r.tag : r.leistungVon, t -> { r.leistungVon = t; geaendert(); speichern(true); }));
+        Button bis = feldKnopf("Bis  " + (r.leistungBis == 0 ? "–" : Zeiten.datum(r.leistungBis)));
+        bis.setOnClickListener(v -> datumWaehlen(r.leistungBis == 0 ? r.tag : r.leistungBis, t -> { r.leistungBis = t; geaendert(); speichern(true); }));
+        zr.addView(von, halb(true));
+        zr.addView(bis, halb(false));
+        k.addView(zr, zeile(0));
+
+        k.addView(beschriftung("Ergebnis"));
+        for (String e : new String[]{Rapport.OHNE_MAENGEL, Rapport.MIT_MAENGELN, Rapport.ABGELEHNT}) {
+            int farbe = Rapport.ABGELEHNT.equals(e) ? ZeitActivity.ROT : Rapport.MIT_MAENGELN.equals(e) ? Ui.AKZENT : Ui.GRUEN;
+            TextView c = chipText((e.equals(r.ergebnis) ? "●  " : "○  ") + e);
+            chip(c, e.equals(r.ergebnis), farbe);
+            c.setOnClickListener(v -> { r.ergebnis = e; geaendert(); speichern(true); });
+            k.addView(c, zeile(6));
+        }
+
+        if (r.mitMaengeln()) {
+            k.addView(beschriftung(Rapport.ABGELEHNT.equals(r.ergebnis) ? "Mängel / Begründung" : "Mängel"));
+            if (r.maengel.isEmpty()) k.addView(hinweis("Noch keine Mängel eingetragen."));
+            for (int i = 0; i < r.maengel.size(); i++) {
+                Rapport.Mangel m = r.maengel.get(i);
+                int idx = i;
+                k.addView(listenZeile((m.erledigt ? "✓  " : "⚠  ") + (i + 1) + ".  " + m.text,
+                        m.erledigt ? "beseitigt" : "offen", v -> mangelBearbeiten(idx)));
+            }
+            Button neu = knopf("＋  Mangel", Ui.WEISS, Ui.AKZENT, true);
+            neu.setTextSize(15);
+            neu.setOnClickListener(v -> mangelBearbeiten(-1));
+            k.addView(neu, hoch(48, 8));
+            Button frist = feldKnopf("⏰  Mängel beseitigen bis  " + (r.frist == 0 ? "–" : Zeiten.datum(r.frist)));
+            frist.setOnClickListener(v -> datumWaehlen(r.frist == 0 ? Zeiten.plusTage(r.tag, 14) : r.frist,
+                    t -> { r.frist = t; geaendert(); speichern(true); }));
+            k.addView(frist, zeile(6));
+            Button aufg = knopf("→  Offene Mängel als Aufgaben", Ui.WEISS, Ui.GRUEN, true);
+            aufg.setTextSize(15);
+            aufg.setOnClickListener(v -> {
+                int n = r.maengelAlsAufgaben(baustelle);
+                speichern(false);
+                Toast.makeText(this, n == 0 ? "Alle offenen Mängel stehen schon bei den Aufgaben"
+                        : n + (n == 1 ? " Mangel" : " Mängel") + " als 🔴 dringende Aufgabe übernommen", Toast.LENGTH_LONG).show();
+            });
+            k.addView(aufg, hoch(48, 0));
+        }
+        return k;
+    }
+
+    private void mangelBearbeiten(int index) {
+        boolean neu = index < 0;
+        Rapport.Mangel m = neu ? new Rapport.Mangel() : rapport.maengel.get(index);
+        LinearLayout b = new LinearLayout(this);
+        b.setOrientation(LinearLayout.VERTICAL);
+        EditText t = eingabe(m.text, "z. B. Fuge an der Traufe nicht dicht", true);
+        b.addView(t);
+        android.widget.CheckBox erl = new android.widget.CheckBox(this);
+        erl.setText("Mangel ist beseitigt");
+        erl.setChecked(m.erledigt);
+        if (!neu) b.addView(erl);
+        AlertDialog.Builder db = new AlertDialog.Builder(this).setTitle(neu ? "Mangel hinzufügen" : "Mangel " + (index + 1))
+                .setView(scroll(b))
+                .setPositiveButton("Übernehmen", (d, w) -> {
+                    m.text = t.getText().toString().trim();
+                    m.erledigt = erl.isChecked();
+                    if (m.text.isEmpty()) return;
+                    if (neu) rapport.maengel.add(m);
+                    geaendert();
+                    speichern(true);
+                })
+                .setNegativeButton("Abbrechen", null);
+        if (!neu) db.setNeutralButton("Löschen", (d, w) -> { rapport.maengel.remove(index); geaendert(); speichern(true); });
+        db.show();
+    }
+
+    private TextView chipText(String s) {
+        TextView c = Ui.text(this, s, 15, Ui.TEXT, false);
+        int p = Ui.dp(this, 12);
+        c.setPadding(p, Ui.dp(this, 10), p, Ui.dp(this, 10));
+        return c;
     }
 
     // ---------------------------------------------------------------- Zeiten
@@ -506,10 +671,10 @@ public class RapportActivity extends Activity {
             alle.add(c);
             c.setOnClickListener(v -> {
                 rapport.wetter = w.equals(rapport.wetter) ? "" : w;
-                for (TextView x : alle) chip(x, x.getText().toString().equals(rapport.wetter));
+                for (TextView x : alle) chip(x, x.getText().toString().equals(rapport.wetter), Ui.LILA);
                 geaendert();
             });
-            chip(c, w.equals(rapport.wetter));
+            chip(c, w.equals(rapport.wetter), Ui.LILA);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             lp.setMarginEnd(Ui.dp(this, 6));
             chips.addView(c, lp);
@@ -530,14 +695,48 @@ public class RapportActivity extends Activity {
         behFeld = eingabe(rapport.behinderungen, "z. B. Material zu spät geliefert, Regen ab 14 Uhr", true);
         beiText(behFeld, s -> rapport.behinderungen = s);
         k.addView(mitMikrofon(behFeld, REQ_SPRACHE_BEH));
-        String anw = rapport.anwesende();
-        if (!anw.isEmpty()) k.addView(hinweis("Anwesend (aus den Zeiten): " + anw));
+        if (rapport.istDoku()) {
+            k.addView(beschriftung("Anwesende Mitarbeiter"), 1);
+            EditText anw = eingabe(rapport.anwesend, "Namen, mit Komma getrennt", false);
+            anw.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+            beiText(anw, s -> rapport.anwesend = s);
+            LinearLayout r = new LinearLayout(this);
+            r.setGravity(Gravity.CENTER_VERTICAL);
+            r.addView(anw, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            Button b = feldKnopf("▾");
+            b.setGravity(Gravity.CENTER);
+            b.setOnClickListener(v -> anwesendeWaehlen(anw));
+            r.addView(b, new LinearLayout.LayoutParams(Ui.dp(this, 52), Ui.dp(this, 48)));
+            k.addView(r, 2, zeile(0));
+        } else {
+            String anw = rapport.anwesende();
+            if (!anw.isEmpty()) k.addView(hinweis("Anwesend (aus den Zeiten): " + anw));
+        }
         return k;
     }
 
-    private void chip(TextView c, boolean an) {
+    /** Mehrfachauswahl der Mitarbeiter; Ergebnis steht kommagetrennt im Feld. */
+    private void anwesendeWaehlen(EditText feld) {
+        Set<String> alle = new LinkedHashSet<>();
+        Set<String> drin = new LinkedHashSet<>();
+        for (String x : feld.getText().toString().split(",")) if (!x.trim().isEmpty()) { drin.add(x.trim()); alle.add(x.trim()); }
+        Collections.addAll(alle, namensVorschlaege());
+        String[] namen = alle.toArray(new String[0]);
+        boolean[] an = new boolean[namen.length];
+        for (int i = 0; i < namen.length; i++) an[i] = drin.contains(namen[i]);
+        new AlertDialog.Builder(this).setTitle("Wer war da?")
+                .setMultiChoiceItems(namen, an, (d, w, c) -> an[w] = c)
+                .setPositiveButton("Übernehmen", (d, w) -> {
+                    List<String> l = new ArrayList<>();
+                    for (int i = 0; i < namen.length; i++) if (an[i]) l.add(namen[i]);
+                    feld.setText(String.join(", ", l));
+                })
+                .setNegativeButton("Abbrechen", null).show();
+    }
+
+    private void chip(TextView c, boolean an, int farbe) {
         c.setTextColor(an ? Ui.WEISS : Ui.TEXT);
-        c.setBackground(Ui.rounded(an ? Ui.LILA : Ui.ZEBRA, an ? Ui.LILA : Ui.LINIE, Ui.dp(this, 18), Ui.dp(this, 1)));
+        c.setBackground(Ui.rounded(an ? farbe : Ui.ZEBRA, an ? farbe : Ui.LINIE, Ui.dp(this, 18), Ui.dp(this, 1)));
     }
 
     // ---------------------------------------------------------------- Fotos
@@ -640,7 +839,7 @@ public class RapportActivity extends Activity {
         Button zu = knopf("✕", Ui.WEISS, Ui.GRAU, true);
         zu.setOnClickListener(v -> d.dismiss());
         Button unter = knopf("✍ Unterschreiben", Ui.AKZENT, Ui.WEISS, false);
-        unter.setOnClickListener(v -> { d.dismiss(); unterschreiben(); });
+        unter.setOnClickListener(v -> { d.dismiss(); unterschreiben(false); });
         Button send = knopf("📤 Senden", Ui.PRIMAER, Ui.WEISS, false);
         send.setOnClickListener(v -> { d.dismiss(); senden(); });
         LinearLayout.LayoutParams l0 = new LinearLayout.LayoutParams(Ui.dp(this, 56), Ui.dp(this, 52));
@@ -653,19 +852,31 @@ public class RapportActivity extends Activity {
         d.show();
     }
 
-    private void unterschreiben() {
+    /** Unterschrift am Handy; zweite = Auftragnehmer bei der Abnahme. */
+    private void unterschreiben(boolean zweite) {
         speichern(false);
         LinearLayout b = new LinearLayout(this);
         b.setOrientation(LinearLayout.VERTICAL);
-        b.addView(beschriftung("Name des Unterzeichners"));
-        String vorschlag = rapport.unterzeichner.isEmpty() ? (baustelle.kunde == null ? "" : baustelle.kunde.trim()) : rapport.unterzeichner;
+        b.addView(beschriftung(zweite ? "Name (Auftragnehmer)" : rapport.istAbnahme() ? "Name (Auftraggeber)" : "Name des Unterzeichners"));
+        String kunde = baustelle.kunde == null ? "" : baustelle.kunde.trim();
+        String vorschlag = zweite ? (rapport.unterzeichner2.isEmpty() ? Zeiten.mitarbeiter(this) : rapport.unterzeichner2)
+                : rapport.unterzeichner.isEmpty() ? kunde : rapport.unterzeichner;
         EditText name = eingabe(vorschlag, "Vor- und Nachname", false);
         name.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
         Set<String> namen = new LinkedHashSet<>();
-        if (baustelle.kunde != null && !baustelle.kunde.trim().isEmpty()) namen.add(baustelle.kunde.trim());
-        Collections.addAll(namen, RapportDateien.namen(this, "unterzeichner"));
+        if (zweite) {
+            if (!Zeiten.mitarbeiter(this).isEmpty()) namen.add(Zeiten.mitarbeiter(this));
+            Collections.addAll(namen, RapportDateien.namen(this, "mitarbeiter"));
+        } else {
+            if (!kunde.isEmpty()) namen.add(kunde);
+            Collections.addAll(namen, RapportDateien.namen(this, "unterzeichner"));
+        }
         b.addView(mitAuswahl(name, namen.toArray(new String[0])));
-        b.addView(hinweis("Mit der Unterschrift bestätigt der Auftraggeber die Angaben im Rapport (Zeiten "
+        b.addView(hinweis(rapport.istAbnahme()
+                ? "Bestätigt die " + rapport.abnahmeArt + ": " + rapport.ergebnis
+                + (rapport.mitMaengeln() ? " (" + rapport.maengel.size() + (rapport.maengel.size() == 1 ? " Mangel" : " Mängel") + ")" : "") + "."
+                : rapport.istDoku() ? "Bestätigt die Angaben im Bautagebuch."
+                : "Mit der Unterschrift bestätigt der Auftraggeber die Angaben im Rapport (Zeiten "
                 + RapportPdf.dauer(rapport.summeMin()) + " h" + (rapport.material.isEmpty() ? "" : ", " + rapport.material.size() + " Material") + ")."));
         UnterschriftView feld = new UnterschriftView(this);
         feld.setBackground(Ui.rounded(Ui.WEISS, Ui.LINIE, Ui.dp(this, 8), Ui.dp(this, 2)));
@@ -676,7 +887,7 @@ public class RapportActivity extends Activity {
         int p = Ui.dp(this, 20);
         rahmen.setPadding(p, Ui.dp(this, 8), p, 0);
         rahmen.addView(b, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        AlertDialog d = new AlertDialog.Builder(this).setTitle("✍ Unterschrift")
+        AlertDialog d = new AlertDialog.Builder(this).setTitle(zweite ? "✍ Auftragnehmer" : rapport.istAbnahme() ? "✍ Auftraggeber" : "✍ Unterschrift")
                 .setView(rahmen)
                 .setPositiveButton("Übernehmen", null)
                 .setNeutralButton("Löschen", null)
@@ -690,13 +901,26 @@ public class RapportActivity extends Activity {
                     return;
                 }
                 try {
-                    if (rapport.unterschrieben()) RapportDateien.datei(this, rapport.unterschrift).delete();
-                    rapport.unterschrift = RapportDateien.unterschriftSpeichern(this, sig);
-                    rapport.unterzeichner = name.getText().toString().trim();
-                    rapport.unterschriebenAm = System.currentTimeMillis();
-                    RapportDateien.merkeName(this, "unterzeichner", rapport.unterzeichner);
+                    if (zweite) {
+                        if (rapport.unterschrieben2()) RapportDateien.datei(this, rapport.unterschrift2).delete();
+                        rapport.unterschrift2 = RapportDateien.unterschriftSpeichern(this, sig);
+                        rapport.unterzeichner2 = name.getText().toString().trim();
+                        rapport.unterschrieben2Am = System.currentTimeMillis();
+                        RapportDateien.merkeName(this, "mitarbeiter", rapport.unterzeichner2);
+                    } else {
+                        if (rapport.unterschrieben()) RapportDateien.datei(this, rapport.unterschrift).delete();
+                        rapport.unterschrift = RapportDateien.unterschriftSpeichern(this, sig);
+                        rapport.unterzeichner = name.getText().toString().trim();
+                        rapport.unterschriebenAm = System.currentTimeMillis();
+                        RapportDateien.merkeName(this, "unterzeichner", rapport.unterzeichner);
+                    }
                     speichern(true);
                     d.dismiss();
+                    if (rapport.istAbnahme() && !(rapport.unterschrieben() && rapport.unterschrieben2())) {
+                        Toast.makeText(this, "✓ Unterschrieben – jetzt fehlt noch " + (rapport.unterschrieben() ? "der Auftragnehmer" : "der Auftraggeber"),
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
                     new AlertDialog.Builder(this).setTitle("✓ Unterschrieben")
                             .setMessage("PDF jetzt senden (WhatsApp, E-Mail …)?")
                             .setPositiveButton("📤 Senden", (dd, w) -> senden())
@@ -800,8 +1024,8 @@ public class RapportActivity extends Activity {
         menu.add(0, 1, 0, "🏢 Briefkopf (Firma & Logo) …");
         menu.add(0, 2, 1, "💬 Hinweistext-Vorlage …");
         if (rapport != null) {
-            menu.add(0, 3, 2, "💬 Vorlage in diesen Rapport übernehmen");
-            menu.add(0, 4, 3, "🗑 Rapport löschen");
+            menu.add(0, 3, 2, "💬 Vorlage in " + (rapport.istRapport() ? "diesen Rapport" : "dieses Dokument") + " übernehmen");
+            menu.add(0, 4, 3, "🗑 " + name(rapport.art) + " löschen");
         }
         return true;
     }

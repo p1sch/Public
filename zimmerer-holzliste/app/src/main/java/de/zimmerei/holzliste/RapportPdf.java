@@ -94,7 +94,8 @@ public final class RapportPdf {
 
     /** Dateiname wie „Rapport_2026-11-25_Seehaus.pdf“. */
     public static String dateiname(Holzliste b, Rapport r) {
-        String s = "Rapport_" + new SimpleDateFormat("yyyy-MM-dd", DE).format(new Date(r.tag)) + "_" + b.titel();
+        String art = r.istAbnahme() ? "Abnahme" : r.istDoku() ? "Bautagebuch" : "Rapport";
+        String s = art + "_" + new SimpleDateFormat("yyyy-MM-dd", DE).format(new Date(r.tag)) + "_" + b.titel();
         s = s.replaceAll("[^A-Za-z0-9ÄÖÜäöüß_\\-]+", "_").replaceAll("_+", "_");
         if (s.length() > 70) s = s.substring(0, 70);
         return s + ".pdf";
@@ -106,7 +107,7 @@ public final class RapportPdf {
         Holzliste baustelle;
         Rapport rapport;
         String firmaName, firmaAdresse;
-        Bitmap logo, unterschrift;
+        Bitmap logo, unterschrift, unterschrift2;
         final List<File> fotos = new ArrayList<>();
 
         static Daten von(Context c, Holzliste b, Rapport r) {
@@ -117,6 +118,7 @@ public final class RapportPdf {
             d.firmaAdresse = RapportDateien.firmaAdresse(c);
             d.logo = RapportDateien.bild(RapportDateien.logo(c), 600);
             if (r.unterschrieben()) d.unterschrift = RapportDateien.bild(RapportDateien.datei(c, r.unterschrift), 1200);
+            if (r.unterschrieben2()) d.unterschrift2 = RapportDateien.bild(RapportDateien.datei(c, r.unterschrift2), 1200);
             for (String f : r.fotos) {
                 File x = RapportDateien.datei(c, f);
                 if (x.exists()) d.fotos.add(x);
@@ -127,6 +129,7 @@ public final class RapportPdf {
         void freigeben() {
             if (logo != null) logo.recycle();
             if (unterschrift != null) unterschrift.recycle();
+            if (unterschrift2 != null) unterschrift2.recycle();
         }
     }
 
@@ -260,6 +263,30 @@ public final class RapportPdf {
             s.y += 18;
         }
 
+        // ---- Abnahme
+        if (r.istAbnahme()) {
+            ueberschrift(s, "Abnahme");
+            feld(s, "Art der Abnahme", r.abnahmeArt);
+            String zeitraum = (r.leistungVon == 0 ? "" : Zeiten.datum(r.leistungVon))
+                    + (r.leistungVon != 0 && r.leistungBis != 0 ? " bis " : "") + (r.leistungBis == 0 ? "" : Zeiten.datum(r.leistungBis));
+            feld(s, "Leistung erbracht", zeitraum);
+            feld(s, "Ergebnis", r.ergebnis);
+            if (r.mitMaengeln() && !r.maengel.isEmpty()) {
+                s.y += 4;
+                float[] sp = {30, 395, 70};
+                String[] kopf = {"Nr.", "Mangel", "Status"};
+                boolean[] rechts = {true, false, false};
+                tabellenKopf(s, sp, kopf, rechts);
+                int n = 1;
+                for (Rapport.Mangel m : r.maengel) {
+                    tabellenZeile(s, sp, rechts, new String[]{String.valueOf(n++), m.text, m.erledigt ? "beseitigt" : "offen"}, kopf);
+                }
+                s.y += 10;
+            }
+            if (r.mitMaengeln()) feld(s, "Mängel beseitigen bis", r.frist == 0 ? "" : Zeiten.datum(r.frist));
+            s.y += 8;
+        }
+
         // ---- Dokumentation
         boolean doku = !r.eintrag.trim().isEmpty() || !r.behinderungen.trim().isEmpty() || !r.wetter.isEmpty()
                 || !r.temperatur.trim().isEmpty() || !r.anwesende().isEmpty();
@@ -274,36 +301,34 @@ public final class RapportPdf {
             s.y += 8;
         }
 
-        // ---- Bemerkung + Bestätigung + Unterschrift: bleiben zusammen auf einer Seite
+        // ---- Bemerkung + Bestätigung + Unterschrift(en): bleiben zusammen auf einer Seite
         String bem = r.bemerkung.trim();
-        bem += (bem.isEmpty() ? "" : "\n\n") + "Mit meiner Unterschrift bestätige ich die Richtigkeit der vorstehenden Angaben.";
+        String bestaetigung = r.istAbnahme()
+                ? "Mit den Unterschriften bestätigen Auftraggeber und Auftragnehmer die Abnahme der oben genannten Leistungen mit dem angegebenen Ergebnis."
+                : r.istRapport() || r.unterschrieben() ? "Mit meiner Unterschrift bestätige ich die Richtigkeit der vorstehenden Angaben." : "";
+        if (!bestaetigung.isEmpty()) bem += (bem.isEmpty() ? "" : "\n\n") + bestaetigung;
+        boolean unterschriftZeigen = !r.istDoku() || r.unterschrieben();
         TextPaint bemPaint = paint(9.5f, false, Color.BLACK);
-        float sigH = 55, sigB = 200, sigBlock = 14 + sigH + 30;
-        float block = 22 + layout(bem, bemPaint, innen, Layout.Alignment.ALIGN_NORMAL).getHeight() + sigBlock;
-        if (s.y + block > UNTEN && block < UNTEN - RAND) s.neu();
-        ueberschrift(s, "Bemerkung");
-        absatz(s, bem, bemPaint);
+        float sigH = 55, sigBlock = unterschriftZeigen ? 14 + sigH + 30 : 0;
+        float textH = bem.isEmpty() ? 0 : 22 + layout(bem, bemPaint, innen, Layout.Alignment.ALIGN_NORMAL).getHeight();
+        if (s.y + textH + sigBlock > UNTEN && textH + sigBlock < UNTEN - RAND) s.neu();
+        if (!bem.isEmpty()) {
+            ueberschrift(s, "Bemerkung");
+            absatz(s, bem, bemPaint);
+        }
 
-        // ---- Unterschrift
-        s.platz(sigBlock);
-        s.y += 14;
-        if (d.unterschrift != null) {
-            float f = Math.min(sigB / d.unterschrift.getWidth(), sigH / d.unterschrift.getHeight());
-            float w = d.unterschrift.getWidth() * f, h = d.unterschrift.getHeight() * f;
-            s.cv.drawBitmap(d.unterschrift, null, new RectF(RAND, s.y + sigH - h, RAND + w, s.y + sigH), bildPaint());
+        if (unterschriftZeigen) {
+            s.platz(sigBlock);
+            s.y += 14;
+            if (r.istAbnahme()) {
+                unterschrift(s, RAND, d.unterschrift, "Auftraggeber" + name(r.unterzeichner), r.unterschriebenAm);
+                unterschrift(s, BREITE / 2f + 10, d.unterschrift2, "Auftragnehmer" + name(r.unterzeichner2), r.unterschrieben2Am);
+            } else {
+                unterschrift(s, RAND, d.unterschrift, "Unterschrift" + (r.unterzeichner.trim().isEmpty() ? "" : " " + r.unterzeichner.trim()),
+                        r.unterschriebenAm);
+            }
+            s.y += sigH + 32;
         }
-        s.y += sigH + 2;
-        Paint l = new Paint(Paint.ANTI_ALIAS_FLAG);
-        l.setColor(Color.DKGRAY);
-        l.setStrokeWidth(0.7f);
-        s.cv.drawLine(RAND, s.y, RAND + 220, s.y, l);
-        String unter = "Unterschrift" + (r.unterzeichner.trim().isEmpty() ? "" : " " + r.unterzeichner.trim());
-        s.cv.drawText(unter, RAND + 2, s.y + 11, paint(8, false, Color.BLACK));
-        if (r.unterschriebenAm != 0) {
-            s.cv.drawText("unterschrieben am " + new SimpleDateFormat("dd.MM.yyyy, HH:mm", DE).format(new Date(r.unterschriebenAm)) + " Uhr",
-                    RAND + 2, s.y + 22, paint(7.5f, false, GRAU));
-        }
-        s.y += 30;
 
         // ---- Fotos: je eine halbe Seite; beginnen direkt unter der Unterschrift, wenn dort Platz ist
         if (!d.fotos.isEmpty()) {
@@ -331,6 +356,30 @@ public final class RapportPdf {
     }
 
     // ================================================================ Bausteine
+
+    /** Unterschrift (Bild über einer Linie) mit Beschriftung; s.y bleibt unverändert. */
+    private static void unterschrift(Seite s, float x, Bitmap bild, String text, long am) {
+        float sigH = 55, sigB = 200;
+        if (bild != null) {
+            float f = Math.min(sigB / bild.getWidth(), sigH / bild.getHeight());
+            float w = bild.getWidth() * f, h = bild.getHeight() * f;
+            s.cv.drawBitmap(bild, null, new RectF(x, s.y + sigH - h, x + w, s.y + sigH), bildPaint());
+        }
+        float y = s.y + sigH + 2;
+        Paint l = new Paint(Paint.ANTI_ALIAS_FLAG);
+        l.setColor(Color.DKGRAY);
+        l.setStrokeWidth(0.7f);
+        s.cv.drawLine(x, y, x + 220, y, l);
+        s.cv.drawText(text, x + 2, y + 11, paint(8, false, Color.BLACK));
+        if (am != 0) {
+            s.cv.drawText("unterschrieben am " + new SimpleDateFormat("dd.MM.yyyy, HH:mm", DE).format(new Date(am)) + " Uhr",
+                    x + 2, y + 22, paint(7.5f, false, GRAU));
+        }
+    }
+
+    private static String name(String n) {
+        return n == null || n.trim().isEmpty() ? "" : ": " + n.trim();
+    }
 
     private static void ueberschrift(Seite s, String t) {
         s.platz(60); // Überschrift nie allein am Seitenende

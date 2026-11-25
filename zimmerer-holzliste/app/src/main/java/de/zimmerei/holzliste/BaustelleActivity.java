@@ -125,9 +125,16 @@ public class BaustelleActivity extends Activity {
                 Ui.PRIMAER, hier, v -> stunden()), zeile(Ui.dp(this, 10)));
 
         // Rapport: Tagesbericht mit Stunden, Material, Fotos und Unterschrift des Kunden
-        int nR = liste.rapporte.size(), uR = 0;
-        Rapport letzter = null;
+        int nR = 0, uR = 0, nD = 0, nAb = 0, offeneMaengel = 0;
+        Rapport letzter = null, letzteDoku = null;
         for (Rapport r : liste.rapporte) {
+            if (r.istDoku()) { nD++; if (letzteDoku == null || r.tag > letzteDoku.tag) letzteDoku = r; continue; }
+            if (r.istAbnahme()) {
+                nAb++;
+                if (r.mitMaengeln()) for (Rapport.Mangel m : r.maengel) if (!m.erledigt) offeneMaengel++;
+                continue;
+            }
+            nR++;
             if (r.unterschrieben()) uR++;
             if (letzter == null || r.tag > letzter.tag) letzter = r;
         }
@@ -135,7 +142,17 @@ public class BaustelleActivity extends Activity {
                 nR == 0 ? "Tagesbericht mit Stunden, Material, Fotos –\nKunde unterschreibt am Handy"
                         : nR + (nR == 1 ? " Rapport" : " Rapporte") + (uR == nR ? ", alle unterschrieben" : ", " + (nR - uR) + " offen")
                         + "\nzuletzt " + Zeiten.datum(letzter.tag),
-                Ui.AKZENT, false, v -> rapporte()), zeile(Ui.dp(this, 18)));
+                Ui.AKZENT, false, v -> dokumente(Rapport.RAPPORT)), zeile(Ui.dp(this, 10)));
+
+        LinearLayout r4 = reihe();
+        r4.addView(kachel("📷", "Doku",
+                nD == 0 ? "Bautagebuch mit Fotos" : nD + (nD == 1 ? " Eintrag" : " Einträge") + "\nzuletzt " + Zeiten.datum(letzteDoku.tag),
+                Ui.LILA, false, v -> dokumente(Rapport.DOKU)), spalte(true));
+        r4.addView(kachel("✅", "Abnahme",
+                nAb == 0 ? "Protokoll mit Mängeln" : offeneMaengel > 0 ? "⚠ " + offeneMaengel + " offene Mängel"
+                        : nAb + (nAb == 1 ? " Abnahme" : " Abnahmen"),
+                Ui.GRUEN, offeneMaengel > 0, v -> dokumente(Rapport.ABNAHME)), spalte(false));
+        inhalt.addView(r4, zeile(Ui.dp(this, 18)));
 
         // Was noch kommt – ehrlich als „später“ gekennzeichnet.
         TextView spaeter = Ui.text(this, "KOMMT SPÄTER", 13, Ui.GRAU, true);
@@ -143,7 +160,7 @@ public class BaustelleActivity extends Activity {
         spaeter.setPadding(Ui.dp(this, 4), 0, 0, Ui.dp(this, 6));
         inhalt.addView(spaeter);
         LinearLayout r3 = reihe();
-        String[][] bald = {{"📖", "Lexikon"}, {"📷", "Fotos"}, {"✅", "Abnahme"}};
+        String[][] bald = {{"📖", "Lexikon"}, {"👥", "Teams"}};
         for (int i = 0; i < bald.length; i++) {
             TextView t = Ui.text(this, bald[i][0] + "\n" + bald[i][1], 14, Ui.GRAU, false);
             t.setGravity(Gravity.CENTER);
@@ -250,9 +267,10 @@ public class BaustelleActivity extends Activity {
         startActivity(i);
     }
 
-    private void rapporte() {
+    private void dokumente(String art) {
         Intent i = new Intent(this, RapportActivity.class);
         i.putExtra(RapportActivity.EXTRA_BAUSTELLE, liste.id);
+        i.putExtra(RapportActivity.EXTRA_ART, art);
         astOffen = true;
         startActivity(i);
     }

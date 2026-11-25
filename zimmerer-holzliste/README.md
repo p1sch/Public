@@ -65,6 +65,16 @@ Menü ⋮ → **🏢 Briefkopf**: Firmenname, Anschrift und Logo (oben rechts au
 Menü ⋮ → **💬 Hinweistext-Vorlage**: Text unter „Bemerkung“ für neue Rapporte (mit Vorschlag zum Widerspruchsrecht
 nach VOB/B § 15 Abs. 3 – bitte selbst prüfen).
 
+## 📷 Dokumentation (Bautagebuch) und ✅ Abnahme
+
+Ebenfalls auf der Baustellen-Seite, mit denselben Fotos, Vorschau, Unterschrift und PDF wie der Rapport:
+
+- **📷 Doku**: Bautagebuch-Eintrag mit anwesenden Mitarbeitern (vorgeschlagen aus den gestempelten Zeiten),
+  Wetter, Temperatur, ausgeführten Arbeiten, Behinderungen und Fotos. Unterschrift optional.
+- **✅ Abnahme**: Teil- oder Gesamtabnahme, Leistungszeitraum, Ergebnis (ohne Mängel / mit Mängeln / abgelehnt),
+  Mängelliste mit Status und Frist. Auftraggeber **und** Auftragnehmer unterschreiben am Handy.
+  „→ Offene Mängel als Aufgaben“ legt sie als 🔴 dringende Aufgaben (mit Frist) in der Baustelle an.
+
 ## Installation
 
 Die APK wird automatisch per GitHub Actions gebaut (`.github/workflows/holzliste-android.yml`)
