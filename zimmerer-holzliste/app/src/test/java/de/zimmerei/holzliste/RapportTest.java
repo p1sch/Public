@@ -263,6 +263,20 @@ public class RapportTest {
         assertEquals(Rapport.TEILABNAHME, a2.abnahmeArt);
         assertEquals("Max Muster, Erika Beispiel", g.rapporte.get(1).anwesende());
 
+        // Beispiel-Datei für den Test der Web-App (docs/test): genau das Format, das die Handy-App ins Team lädt
+        File web = new File("build/web-beispiel");
+        web.mkdirs();
+        Werkzeug w1 = new Werkzeug(); w1.name = "Kettensäge"; w1.prio = Werkzeug.ROT; w1.eingepackt = true;
+        Werkzeug w2 = new Werkzeug(); w2.name = "Abbundsäge"; w2.prio = Werkzeug.GELB; w2.anzahl = 2;
+        g.werkzeug.add(w1); g.werkzeug.add(w2);
+        try (FileOutputStream out = new FileOutputStream(new File(web, "baustelle.json"))) {
+            out.write(g.toJson().toString(1).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        }
+        for (String name : TeamSync.dateien(g)) {
+            java.nio.file.Files.copy(RapportDateien.datei(c, name).toPath(), new File(web, name).toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        }
+
         // PDFs als Bilder
         File dir = new File("build/screenshots");
         dir.mkdirs();

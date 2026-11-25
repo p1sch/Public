@@ -105,8 +105,25 @@ Die App muss im Microsoft-365-Verzeichnis registriert werden (kostenlos). Die Me
 3. Auf der **Übersicht** stehen **Anwendungs-ID (Client-ID)** und **Verzeichnis-ID (Mandanten-ID)**. Beide in der App unter
    **👥 Meine Teams** eintragen, dann **Mit Microsoft anmelden**. (Die Client-ID ist kein Geheimnis; ein geheimer
    Schlüssel wird nicht gebraucht.)
+4. Für die **PC-Version im Browser**: unter **Authentifizierung → Plattform hinzufügen → Single-Page-Anwendung** die Adresse
+   **`https://p1sch.github.io/Public/`** eintragen.
 
 Die App arbeitet nur im Namen des angemeldeten Benutzers: Sie sieht nur Teams, in denen er Mitglied ist.
+
+## 💻 PC-Version im Browser
+
+**https://p1sch.github.io/Public/** – dieselben Baustellen aus Microsoft Teams am PC (Code in `docs/` im Repository-Hauptordner):
+Übersicht mit Summen und offenen Mängeln, Materialliste (Rechnung genau wie in der App) mit Export für Excel (CSV),
+Aufgaben anlegen/abhaken/löschen, Werkzeug abhaken, alle Rapporte, Bautagebuch-Einträge und Abnahmen mit Fotos,
+Unterschriften und Link zur PDF im Team, Mängel abhaken, Notiz, Drucken. Änderungen sind sofort auf den Handys
+(beim nächsten Öffnen der Baustelle). Speichert gleichzeitig ein Handy, lädt die Web-App den neuen Stand und wendet die
+eigene Änderung erneut an – es geht nichts verloren.
+
+Einmal einrichten: Seite öffnen, Client-ID eintragen (oder Link `https://p1sch.github.io/Public/?client=<Client-ID>&mandant=<Verzeichnis-ID>`
+verschicken), anmelden. Voraussetzung: Schritt 4 der Teams-Einrichtung oben und GitHub Pages ist eingeschaltet
+(Repository → Settings → Pages → „Deploy from a branch“, Ordner `/docs`).
+
+Test im Browser gegen ein nachgebautes Microsoft 365: `node web-test/webtest.js` (nach `gradle testDebugUnitTest`, braucht Playwright).
 
 ## Installation
 
