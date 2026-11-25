@@ -62,6 +62,7 @@ public class ExportProvider extends ContentProvider {
     @Override public String getType(Uri uri) {
         String n = uri.getLastPathSegment();
         if (n != null && n.toLowerCase().endsWith(".jpg")) return "image/jpeg";
+        if (n != null && n.toLowerCase().endsWith(".json")) return "application/json";
         return n != null && n.toLowerCase().endsWith(".pdf") ? "application/pdf" : EditorActivity.XLSX_MIME;
     }
     @Override public Uri insert(Uri uri, ContentValues v) { throw new UnsupportedOperationException(); }

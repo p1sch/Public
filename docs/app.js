@@ -1,8 +1,11 @@
 /*
  * Materialliste – Web-App für den PC.
- * Arbeitet direkt auf der Baustellen-Datei im Microsoft-Teams-Team (Materialliste/baustelle.json), genau wie die
- * Android-App: Anmeldung mit dem Firmenkonto (OAuth 2.0 + PKCE im Browser), Daten über Microsoft Graph.
- * Kein eigener Server – die Daten bleiben in Microsoft 365.
+ * Zwei Wege:
+ *  - Ohne Microsoft: Baustellen liegen im Browser dieses PCs; Austausch mit der Handy-App per Datei
+ *    („Baustelle als Datei senden“ / „Datei speichern“).
+ *  - Mit Microsoft Teams: direkt auf der Baustellen-Datei im Team (Materialliste/baustelle.json), genau wie die
+ *    Android-App: Anmeldung mit dem Firmenkonto (OAuth 2.0 + PKCE im Browser), Daten über Microsoft Graph.
+ * Kein eigener Server.
  */
 "use strict";
 
@@ -175,7 +178,7 @@ async function baustelleLaden(teamId) {
   if (!team) throw fehler(404, "Dieses Team gibt es nicht (mehr) oder du bist kein Mitglied.");
   const kanal = (await graph("GET", "/teams/" + teamId + "/primaryChannel?$select=id")).id;
   const o = await graph("GET", "/teams/" + teamId + "/channels/" + kanal + "/filesFolder");
-  const b = { team, kanal, drive: o.parentReference.driveId, ordner: o.id };
+  const b = { team, kanal, drive: o.parentReference.driveId, ordner: o.id, basis: "#/team/" + encodeURIComponent(teamId) };
   await datenLaden(b);
   Z.baustellen[teamId] = b;
   return b;
@@ -196,6 +199,16 @@ async function datenLaden(b) {
  * wird der neue Stand geladen und dieselbe Änderung noch einmal darauf angewendet.
  */
 async function aendern(b, aenderung, erfolg) {
+  if (b.lokal) {
+    const neu = JSON.parse(JSON.stringify(b.daten));
+    if (aenderung(neu) === false) { meldung("Diese Stelle gibt es nicht mehr"); render(); return; }
+    neu.geaendert = Math.max(Date.now(), (b.daten.geaendert || 0) + 1);
+    b.daten = neu;
+    meldung(lokalSpeichern(neu) ? "✓ " + (erfolg || "Gespeichert") + " – auf diesem PC"
+      : "⚠ Der Browser speichert nicht (privates Fenster?) – bitte „⬇ Datei speichern“");
+    render();
+    return;
+  }
   for (let versuch = 0; versuch < 3; versuch++) {
     const neu = JSON.parse(JSON.stringify(b.daten));
     if (aenderung(neu) === false) { meldung("Diese Stelle gibt es im aktuellen Stand nicht mehr"); render(); return; }
@@ -215,6 +228,70 @@ async function aendern(b, aenderung, erfolg) {
       return;
     }
   }
+}
+
+// ================================================================ Baustellen auf diesem PC (ohne Microsoft)
+
+const LOKAL = "ml_lokal";
+
+function lokaleListe() { return speicher.get(LOKAL) || {}; }
+
+/** Speichert im Browser; false, wenn der Browser nichts speichern lässt (privates Fenster, voll). */
+function lokalSpeichern(d) {
+  const l = lokaleListe();
+  l[d.id] = d;
+  try { localStorage.setItem(LOKAL, JSON.stringify(l)); return true; } catch (e) { return false; }
+}
+
+function lokalLoeschen(id) {
+  const l = lokaleListe();
+  delete l[id];
+  speicher.set(LOKAL, l);
+}
+
+function lokaleBaustelle(id) {
+  const d = lokaleListe()[id];
+  return d ? { lokal: true, daten: d, basis: "#/lokal/" + encodeURIComponent(id) } : null;
+}
+
+const neueId = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now() + "-" + Math.random().toString(16).slice(2));
+
+function leereBaustelle(projekt) {
+  return { version: 1, id: neueId(), projekt, kunde: "", bauteil: "", datum: datum(Date.now()), bearbeiter: "", notiz: "",
+    awDatei: "", awDatum: "", geaendert: Date.now(), positionen: [], werkzeug: [], aufgaben: [], rapporte: [] };
+}
+
+/** Baustelle als Datei herunterladen (zum Senden ans Handy oder zur Sicherung). */
+function dateiSpeichern(d) {
+  const blob = new Blob([JSON.stringify(d, null, 1)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  // gleicher Name wie in der Handy-App (DateiAustausch.dateiname); nur einfache Zeichen, sonst verwerfen Browser den Namen
+  const name = ML.titel(d).replace(/[äöüÄÖÜß]/g, c => ({ ä: "ae", ö: "oe", ü: "ue", Ä: "Ae", Ö: "Oe", Ü: "Ue", ß: "ss" }[c]))
+    .replace(/[–—]/g, "-").replace(/[^A-Za-z0-9 _.\-]+/g, "_").trim();
+  a.download = (name || "Baustelle") + ".materialliste.json";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  meldung("⬇ Gespeichert – die Datei kannst du ans Handy schicken (📥 Baustelle aus Datei laden)");
+}
+
+/** Datei aus der Handy-App (oder eine gesicherte) öffnen. */
+function dateiOeffnen(datei) {
+  const r = new FileReader();
+  r.onload = () => {
+    let d;
+    try { d = JSON.parse(r.result); } catch (e) { meldung("⚠ Das ist keine Baustellen-Datei"); return; }
+    if (!d || typeof d !== "object" || !(Array.isArray(d.positionen) || "projekt" in d)) { meldung("⚠ Das ist keine Baustellen-Datei"); return; }
+    for (const k of ["positionen", "werkzeug", "aufgaben", "rapporte"]) if (!Array.isArray(d[k])) d[k] = [];
+    if (leer(d.id)) d.id = neueId();
+    const alt = lokaleListe()[d.id];
+    if (alt && !confirm("„" + ML.titel(alt) + "“ ist schon auf diesem PC. Durch die Datei ersetzen?\n(Abbrechen = als zusätzliche Baustelle öffnen)")) d.id = neueId();
+    if (!lokalSpeichern(d)) { meldung("⚠ Der Browser speichert nicht (privates Fenster?)"); return; }
+    meldung("✓ „" + ML.titel(d) + "“ geöffnet");
+    location.hash = "#/lokal/" + encodeURIComponent(d.id);
+  };
+  r.readAsText(datei);
 }
 
 // ================================================================ Darstellung
@@ -250,6 +327,8 @@ function route() {
 async function zeigen() {
   const r = route();
   const inhalt = $("#inhalt");
+  if (r.seite === "lokal") { kopfRechts(); return render(); }
+  if (r.seite === "" && !angemeldet()) { kopfRechts(); return startseite(inhalt); }
   if (!konfig().clientId) { kopfRechts(); return einrichtung(inhalt); }
   if (!angemeldet()) { kopfRechts(); return anmeldung(inhalt); }
   kopfRechts();
@@ -280,8 +359,77 @@ async function zeigen() {
 
 function render() {
   const r = route();
-  if (r.seite === "team" && Z.baustellen[r.id]) baustelle(Z.baustellen[r.id], r.reiter);
+  if (r.seite === "lokal") {
+    const b = r.id ? lokaleBaustelle(r.id) : null;
+    if (b) baustelle(b, r.reiter); else lokalSeite();
+  } else if (r.seite === "team" && Z.baustellen[r.id]) baustelle(Z.baustellen[r.id], r.reiter);
   else teamsSeite();
+}
+
+// ---------------------------------------------------------------- Startseite: ohne Microsoft oder mit Teams
+
+function startseite(el) {
+  const n = Object.keys(lokaleListe()).length;
+  el.innerHTML = `
+    <h1>Materialliste am PC</h1>
+    <p class="unter">Materiallisten, Aufgaben, Werkzeug und Berichte deiner Baustellen – am PC bearbeiten und drucken.</p>
+    <div class="raster" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+      <a class="karte kachel" href="#/lokal" style="--farbe:var(--akzent);text-decoration:none;color:inherit">
+        <h3>💻 Ohne Microsoft – auf diesem PC</h3>
+        <div class="zahl">${n} ${n === 1 ? "Baustelle" : "Baustellen"}</div>
+        <p>Sofort loslegen. Baustellen kommen per Datei vom Handy (📤 „Baustelle als Datei senden“) oder werden hier neu angelegt.</p>
+      </a>
+      <a class="karte kachel" href="#/teams" style="--farbe:var(--blau);text-decoration:none;color:inherit">
+        <h3>👥 Mit Microsoft Teams</h3>
+        <div class="zahl">${konfig().clientId ? "eingerichtet" : "einrichten"}</div>
+        <p>Alle arbeiten am selben Stand wie in der Handy-App. Braucht einmal die Einrichtung durch den Microsoft-365-Admin.</p>
+      </a>
+    </div>`;
+}
+
+function lokalSeite() {
+  const el = $("#inhalt");
+  const l = Object.values(lokaleListe()).sort((a, b) => (b.geaendert || 0) - (a.geaendert || 0));
+  el.innerHTML = `
+    <p class="nicht-drucken" style="margin:0 0 6px"><a href="#/">← Start</a></p>
+    <h1>Baustellen auf diesem PC</h1>
+    <p class="unter">Ohne Microsoft – gespeichert in diesem Browser. Zum Handy und zurück per Datei.</p>
+    <div class="knoepfe nicht-drucken" style="margin-bottom:14px">
+      <button class="knopf voll" id="neu">＋ Neue Baustelle</button>
+      <label class="knopf" style="margin:0">📂 Datei vom Handy öffnen<input type="file" id="datei" accept=".json,application/json" hidden></label>
+    </div>
+    ${l.length ? '<div class="raster">' + l.map(d => {
+      const s = ML.summen(d);
+      const info = [d.kunde, d.bauteil].filter(x => !leer(x)).join(" · ");
+      return `<div class="karte kachel" data-id="${esc(d.id)}" style="--farbe:var(--akzent)">
+        <h3>${esc(ML.titel(d))}</h3>
+        <p>${esc(info || "–")}\n${s.anzahl} Positionen${s.hatPreise ? " · " + ML.euro(s.betrag) : ""} · ${(d.aufgaben || []).length} Aufgaben · ${(d.rapporte || []).length} Berichte</p>
+        <div class="knoepfe nicht-drucken" style="margin-top:10px">
+          <button class="knopf klein" data-export="${esc(d.id)}">⬇ Datei speichern</button>
+          <button class="knopf klein rot" data-weg="${esc(d.id)}">Löschen</button>
+        </div></div>`;
+    }).join("") + "</div>"
+      : '<p class="hinweis">Noch keine Baustelle auf diesem PC.<br>Lege eine neue an oder öffne eine Datei aus der Handy-App<br>(Baustelle → Menü ⋮ → „📤 Baustelle als Datei senden“).</p>'}
+    <p class="leer" style="margin-top:16px">Tipp: Die Daten liegen nur in diesem Browser. Mit „⬇ Datei speichern“ sicherst du sie oder schickst sie ans Handy.</p>`;
+  $("#neu").onclick = () => {
+    const name = prompt("Name der Baustelle (Projekt):", "");
+    if (name == null) return;
+    const d = leereBaustelle(name.trim() || "Neue Baustelle");
+    if (!lokalSpeichern(d)) { meldung("⚠ Der Browser speichert nicht (privates Fenster?)"); return; }
+    location.hash = "#/lokal/" + encodeURIComponent(d.id);
+  };
+  $("#datei").onchange = e => { if (e.target.files[0]) dateiOeffnen(e.target.files[0]); e.target.value = ""; };
+  el.querySelectorAll(".kachel[data-id]").forEach(k => k.onclick = e => {
+    if (e.target.closest("button")) return;
+    location.hash = "#/lokal/" + encodeURIComponent(k.dataset.id);
+  });
+  el.querySelectorAll("[data-export]").forEach(k => k.onclick = () => dateiSpeichern(lokaleListe()[k.dataset.export]));
+  el.querySelectorAll("[data-weg]").forEach(k => k.onclick = () => {
+    const d = lokaleListe()[k.dataset.weg];
+    if (!confirm("„" + ML.titel(d) + "“ von diesem PC löschen?\nTipp: vorher „⬇ Datei speichern“.")) return;
+    lokalLoeschen(k.dataset.weg);
+    render();
+  });
 }
 
 // ---------------------------------------------------------------- Einrichtung und Anmeldung
@@ -289,7 +437,8 @@ function render() {
 function einrichtung(el) {
   const q = new URLSearchParams(location.search);
   el.innerHTML = `
-    <h1>Materialliste am PC</h1>
+    <p style="margin:0 0 6px"><a href="#/">← Start</a> · <a href="#/lokal">💻 ohne Microsoft arbeiten</a></p>
+    <h1>Mit Microsoft Teams</h1>
     <p class="unter">Deine Baustellen aus Microsoft Teams – dieselben Daten wie in der Handy-App.</p>
     <div class="karte">
       <h2>Einmal einrichten</h2>
@@ -312,7 +461,8 @@ function einrichtung(el) {
 
 function anmeldung(el) {
   el.innerHTML = `
-    <h1>Materialliste am PC</h1>
+    <p style="margin:0 0 6px"><a href="#/">← Start</a> · <a href="#/lokal">💻 ohne Microsoft arbeiten</a></p>
+    <h1>Mit Microsoft Teams</h1>
     <p class="unter">Deine Baustellen aus Microsoft Teams – dieselben Daten wie in der Handy-App.</p>
     <div class="karte">
       <h2>Mit Microsoft anmelden</h2>
@@ -331,7 +481,7 @@ function teamsSeite() {
   const t = Z.teams || [];
   el.innerHTML = `
     <h1>Meine Teams</h1>
-    <p class="unter">Ein Team = eine Baustelle. Anklicken zum Arbeiten.</p>
+    <p class="unter">Ein Team = eine Baustelle. Anklicken zum Arbeiten. · <a href="#/lokal">💻 Baustellen auf diesem PC</a></p>
     <div class="knoepfe nicht-drucken" style="margin-bottom:14px"><button class="knopf klein" id="neu">⟳ Aktualisieren</button></div>
     ${t.length ? '<div class="raster">' + t.map(x => `
       <a class="karte kachel" href="#/team/${encodeURIComponent(x.id)}" style="--farbe:var(--primaer);text-decoration:none;color:inherit">
@@ -353,17 +503,20 @@ function baustelle(b, reiter) {
   const d = b.daten;
   const info = [d.kunde, d.bauteil, d.datum].filter(x => !leer(x)).join(" · ");
   el.innerHTML = `
-    <p class="nicht-drucken" style="margin:0 0 6px"><a href="#/">← Meine Teams</a></p>
+    <p class="nicht-drucken" style="margin:0 0 6px">${b.lokal ? '<a href="#/lokal">← Baustellen auf diesem PC</a>' : '<a href="#/teams">← Meine Teams</a>'}</p>
     <div style="display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap">
-      <div><h1>${esc(ML.titel(d))}</h1><p class="unter" style="margin:0">${esc(info || "👥 " + b.team.displayName)}</p></div>
+      <div><h1>${esc(ML.titel(d))}</h1><p class="unter" style="margin:0">${esc(info || (b.lokal ? "💻 auf diesem PC" : "👥 " + b.team.displayName))}</p></div>
       <div class="knoepfe nicht-drucken">
-        <button class="knopf klein" id="neu">⟳ Aktualisieren</button>
+        <button class="knopf klein" id="kopf">✎ Projekt / Kunde</button>
+        ${b.lokal ? '<button class="knopf klein" id="export">⬇ Datei speichern</button>' : '<button class="knopf klein" id="neu">⟳ Aktualisieren</button>'}
         <button class="knopf klein" id="drucken">🖨 Drucken</button>
       </div>
     </div>
-    <nav class="reiter">${REITER.map(([k, n]) => `<a href="#/team/${encodeURIComponent(b.team.id)}/${k}" class="${k === reiter ? "an" : ""}">${n}</a>`).join("")}</nav>
+    <nav class="reiter">${REITER.map(([k, n]) => `<a href="${b.basis}/${k}" class="${k === reiter ? "an" : ""}">${n}</a>`).join("")}</nav>
     <section id="ansicht"></section>`;
-  $("#neu").onclick = async () => {
+  $("#kopf").onclick = () => kopfdaten(b);
+  if (b.lokal) $("#export").onclick = () => dateiSpeichern(b.daten);
+  else $("#neu").onclick = async () => {
     $("#neu").disabled = true;
     try { await datenLaden(b); meldung("✓ Neuester Stand aus dem Team"); } catch (e) { meldung("⚠ " + e.message); }
     render();
@@ -375,7 +528,7 @@ function baustelle(b, reiter) {
 
 function baustelleFehlt(el, b) {
   el.innerHTML = `
-    <p style="margin:0 0 6px"><a href="#/">← Meine Teams</a></p>
+    <p style="margin:0 0 6px"><a href="#/teams">← Meine Teams</a></p>
     <h1>👥 ${esc(b.team.displayName)}</h1>
     <div class="karte">
       <h2>Im Team gibt es noch keine Baustelle</h2>
@@ -399,6 +552,35 @@ function baustelleFehlt(el, b) {
   };
 }
 
+// ---------------------------------------------------------------- Kopfdaten
+
+function kopfdaten(b) {
+  const d = b.daten;
+  const dlg = document.createElement("dialog");
+  dlg.className = "editor";
+  dlg.innerHTML = `<form method="dialog" novalidate>
+    <h2>Projekt / Kunde</h2>
+    <label for="k-projekt">Projekt / Baustelle</label><input type="text" id="k-projekt" value="${esc(d.projekt)}">
+    <label for="k-kunde">Kunde</label><input type="text" id="k-kunde" value="${esc(d.kunde)}">
+    <label for="k-bauteil">Bauteil</label><input type="text" id="k-bauteil" value="${esc(d.bauteil)}" placeholder="z. B. Dachstuhl, Carport">
+    <label for="k-datum">Datum</label><input type="text" id="k-datum" value="${esc(d.datum)}" placeholder="TT.MM.JJJJ">
+    <div class="knoepfe dialog-knoepfe"><span style="flex:1"></span>
+      <button type="button" class="knopf" id="k-ab">Abbrechen</button><button type="submit" class="knopf voll">Speichern</button></div>
+  </form>`;
+  document.body.appendChild(dlg);
+  const zu = () => { dlg.close(); dlg.remove(); };
+  dlg.querySelector("#k-ab").onclick = zu;
+  dlg.addEventListener("cancel", e => { e.preventDefault(); zu(); });
+  dlg.querySelector("form").onsubmit = e => {
+    e.preventDefault();
+    const w = id => dlg.querySelector("#" + id).value.trim();
+    const neu = { projekt: w("k-projekt"), kunde: w("k-kunde"), bauteil: w("k-bauteil"), datum: w("k-datum") };
+    zu();
+    aendern(b, n => { Object.assign(n, neu); }, "Kopfdaten gespeichert");
+  };
+  dlg.showModal();
+}
+
 // ---------------------------------------------------------------- Übersicht
 
 function offeneMaengel(d) {
@@ -419,7 +601,7 @@ function uebersicht(el, b) {
   const stunden = rap.filter(r => ML.art(r) === "rapport").reduce((x, r) => x + ML.summeMin(r), 0);
   const maengel = offeneMaengel(d);
   const letzte = rap.slice().sort((x, y) => (y.tag || 0) - (x.tag || 0)).slice(0, 4);
-  const link = k => "#/team/" + encodeURIComponent(b.team.id) + "/" + k;
+  const link = k => b.basis + "/" + k;
   el.innerHTML = `
     <div class="raster">
       <a class="karte kachel" href="${link("material")}" style="--farbe:var(--holz);text-decoration:none;color:inherit">
@@ -939,6 +1121,13 @@ function berichtInhalt(r) {
 async function nachladen(b, dt) {
   const r = (b.daten.rapporte || []).find(x => x.id === dt.dataset.id);
   if (!r) return;
+  if (b.lokal) {
+    const f = dt.querySelector(".fotos");
+    if (f) f.outerHTML = '<p class="leer">' + r.fotos.length + (r.fotos.length === 1 ? " Foto" : " Fotos") + " – zu sehen in der Handy-App und in der PDF.</p>";
+    const box = dt.querySelector("[data-pdf]");
+    if (box) box.innerHTML = '<span class="leer">Die PDF erstellst du in der Handy-App („📤 PDF senden“).</span>';
+    return;
+  }
   for (const a of dt.querySelectorAll("a[data-foto]")) {
     const name = a.dataset.foto;
     try {

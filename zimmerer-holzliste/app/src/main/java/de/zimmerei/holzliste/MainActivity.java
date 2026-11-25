@@ -169,6 +169,7 @@ public class MainActivity extends Activity {
     public boolean onCreateOptionsMenu(android.view.Menu menu) {
         menu.add(0, 1, 0, "Artikellisten (Inventar / DATANORM) …");
         menu.add(0, 2, 1, "⏱ Stunden / Zeiterfassung");
+        menu.add(0, 3, 2, "📥 Baustelle aus Datei laden (vom PC) …");
         return true;
     }
 
@@ -176,12 +177,14 @@ public class MainActivity extends Activity {
     public boolean onOptionsItemSelected(android.view.MenuItem item) {
         if (item.getItemId() == 1) { KatalogAuswahl.verwalten(this); return true; }
         if (item.getItemId() == 2) { startActivity(new Intent(this, ZeitActivity.class)); return true; }
+        if (item.getItemId() == 3) { DateiAustausch.dateiWaehlen(this); return true; }
         return super.onOptionsItemSelected(item);
     }
 
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
+        if (DateiAustausch.onActivityResult(this, req, res, data, h -> oeffnen(h, false))) return;
         KatalogAuswahl.onActivityResult(this, req, res, data);
     }
 

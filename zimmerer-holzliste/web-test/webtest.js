@@ -129,7 +129,10 @@ async function downloadRoute(route) {
 
   // 1. Einrichtungs-Link mit Client-ID → Anmeldeseite → Microsoft → zurück → Teams
   await page.goto(basis + "?client=" + CLIENT);
-  await page.getByText("Mit Microsoft anmelden", { exact: false }).first().waitFor();
+  await page.getByText("Ohne Microsoft – auf diesem PC").waitFor(); // Startseite: zwei Wege
+  await bild("web_00_start");
+  await page.click("text=Mit Microsoft Teams");
+  await page.locator("#anmelden").waitFor();
   await bild("web_0_anmelden");
   await page.click("#anmelden");
   await page.getByRole("heading", { name: "Meine Teams" }).waitFor();
@@ -295,6 +298,69 @@ async function downloadRoute(route) {
   await page.setViewportSize({ width: 1280, height: 860 });
   await page.goto(basis + "#/team/t2");
   await page.getByText("Im Team gibt es noch keine Baustelle").waitFor();
+
+  // 11. Ohne Microsoft: Baustellen auf diesem PC, Austausch per Datei
+  const ctx2 = await browser.newContext({ viewport: { width: 1280, height: 860 }, locale: "de-DE", timezoneId: "Europe/Berlin", acceptDownloads: true });
+  let netz = 0;
+  await ctx2.route(/login\.microsoftonline\.com|graph\.microsoft\.com/, r => { netz++; return r.abort(); });
+  const p2 = await ctx2.newPage();
+  p2.on("pageerror", e => fehler.push(e.message));
+  p2.on("console", m => { if (m.type() === "error" && !m.text().startsWith("Failed to load resource")) fehler.push(m.text()); });
+  p2.on("dialog", d => d.type() === "prompt" ? d.accept("Garage Schmidt") : d.accept());
+  const bild2 = async (name, opt = {}) => p2.screenshot({ path: path.join(BILDER, name + ".png"), fullPage: true, ...opt });
+  await p2.goto(basis);
+  await p2.click("text=Ohne Microsoft – auf diesem PC");
+  await p2.getByText("Noch keine Baustelle auf diesem PC").waitFor();
+  //    Datei aus der Handy-App öffnen
+  await p2.setInputFiles("#datei", path.join(BEISPIEL, "baustelle.json"));
+  await p2.getByRole("heading", { name: "EFH Huber – Dachstuhl" }).waitFor();
+  assert.ok((await p2.textContent("#ansicht")).includes("993,10 €"), "Summe wie am Handy");
+  //    bearbeiten bleibt nach Neuladen erhalten
+  await p2.click("nav.reiter >> text=📦 Material");
+  await p2.locator("tr.klickbar", { has: p2.locator("b", { hasText: /^Sparren$/ }) }).click();
+  await p2.fill("#f-stk", "30");
+  await p2.click("#f-ok");
+  await p2.getByText("Geändert – auf diesem PC").waitFor();
+  await p2.reload();
+  await p2.waitForSelector("table");
+  assert.ok((await p2.textContent("#ansicht")).includes("30 Stk"), "nach Neuladen noch da");
+  await p2.click("#kopf");
+  await p2.fill("#k-kunde", "Familie Huber (PC)");
+  await p2.click("dialog button[type=submit]");
+  await p2.getByText("Kopfdaten gespeichert").waitFor();
+  await p2.click("nav.reiter >> text=📋 Berichte");
+  await p2.click("summary:has-text('Rapport')");
+  await p2.getByText("zu sehen in der Handy-App").waitFor();
+  //    Datei speichern → fürs Handy
+  const [dl] = await Promise.all([p2.waitForEvent("download"), p2.click("#export")]);
+  assert.strictEqual(dl.suggestedFilename(), "EFH Huber - Dachstuhl.materialliste.json");
+  const ziel = path.join(BEISPIEL, "vom-pc.materialliste.json");
+  await dl.saveAs(ziel);
+  const vomPc = JSON.parse(fs.readFileSync(ziel, "utf8"));
+  assert.strictEqual(vomPc.kunde, "Familie Huber (PC)");
+  assert.strictEqual(vomPc.positionen.find(x => x.bez === "Sparren").stk, 30);
+  assert.strictEqual(vomPc.rapporte.length, 3);
+  //    neue Baustelle anlegen, Liste, löschen
+  await p2.click("text=← Baustellen auf diesem PC");
+  await p2.click("#neu");
+  await p2.getByRole("heading", { name: "Garage Schmidt" }).waitFor();
+  await p2.click("text=← Baustellen auf diesem PC");
+  await p2.getByText("Garage Schmidt").waitFor();
+  await bild2("web_7_ohne_microsoft");
+  await p2.locator(".kachel", { hasText: "Garage Schmidt" }).locator("[data-weg]").click();
+  await p2.waitForFunction(() => !document.body.innerText.includes("Garage Schmidt"));
+  //    gleiche Datei nochmal öffnen → fragt nach Ersetzen (hier: ja)
+  await p2.setInputFiles("#datei", path.join(BEISPIEL, "baustelle.json"));
+  await p2.locator("h1", { hasText: "EFH Huber – Dachstuhl" }).waitFor();
+  await p2.click("nav.reiter >> text=📦 Material");
+  await p2.waitForSelector("table");
+  assert.ok((await p2.textContent("#ansicht")).includes("24 Stk"), "ersetzt durch den Stand aus der Datei");
+  //    kaputte Datei
+  fs.writeFileSync(path.join(BEISPIEL, "kaputt.json"), "{ das ist nichts");
+  await p2.click("text=← Baustellen auf diesem PC");
+  await p2.setInputFiles("#datei", path.join(BEISPIEL, "kaputt.json"));
+  await p2.getByText("Das ist keine Baustellen-Datei").waitFor();
+  assert.strictEqual(netz, 0, "ohne Microsoft keine Verbindung zu Microsoft");
 
   assert.deepStrictEqual(fehler, [], "keine Fehler in der Konsole");
   await browser.close();

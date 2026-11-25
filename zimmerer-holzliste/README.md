@@ -121,7 +121,12 @@ Unterschriften und Link zur PDF im Team, Mängel abhaken, Notiz, Drucken. Änder
 (beim nächsten Öffnen der Baustelle). Speichert gleichzeitig ein Handy, lädt die Web-App den neuen Stand und wendet die
 eigene Änderung erneut an – es geht nichts verloren.
 
-Einmal einrichten: Seite öffnen, Client-ID eintragen (oder Link `https://p1sch.github.io/Public/?client=<Client-ID>&mandant=<Verzeichnis-ID>`
+**Ohne Microsoft:** Startseite → „💻 Ohne Microsoft – auf diesem PC“. Die Baustellen liegen dann im Browser dieses PCs.
+Austausch mit dem Handy per Datei: in der App Baustelle → Menü ⋮ → **„📤 Baustelle als Datei senden (für den PC)“**
+(z. B. per E-Mail an sich selbst), am PC **„📂 Datei vom Handy öffnen“**; zurück mit **„⬇ Datei speichern“** und in der App
+Startseite → Menü ⋮ → **„📥 Baustelle aus Datei laden“**. Fotos und Unterschriften bleiben auf dem Handy.
+
+**Mit Microsoft Teams** – einmal einrichten: Seite öffnen, Client-ID eintragen (oder Link `https://p1sch.github.io/Public/?client=<Client-ID>&mandant=<Verzeichnis-ID>`
 verschicken), anmelden. Voraussetzung: Schritt 4 der Teams-Einrichtung oben und GitHub Pages ist eingeschaltet
 (Repository → Settings → Pages → „Deploy from a branch“, Ordner `/docs`).
 

@@ -403,6 +403,7 @@ public class BaustelleActivity extends Activity {
     public boolean onCreateOptionsMenu(Menu menu) {
         menu.add(0, 1, 0, "Projekt / Kunde / Datum ändern");
         menu.add(0, 2, 1, "📄 Arbeitsanweisung (PDF) einlesen …");
+        menu.add(0, 3, 2, "📤 Baustelle als Datei senden (für den PC) …");
         return true;
     }
 
@@ -412,6 +413,7 @@ public class BaustelleActivity extends Activity {
             case android.R.id.home: finish(); return true;
             case 1: EditorActivity.kopfdatenDialog(this, liste, this::speichern); return true;
             case 2: AwImport.starten(this, liste.positionen.size()); return true;
+            case 3: DateiAustausch.senden(this, liste); return true;
         }
         return super.onOptionsItemSelected(item);
     }
