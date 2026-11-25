@@ -50,6 +50,7 @@ public class BaustelleActivity extends Activity {
         sv.addView(inhalt);
         setContentView(sv);
         render();
+        if (TeamSync.verknuepft(liste)) teamAbgleich(true);
         if (state == null && getIntent().getBooleanExtra(EXTRA_AW, false)) AwImport.starten(this, 0);
         else if (state == null && getIntent().getBooleanExtra(EXTRA_NEU, false)) EditorActivity.kopfdatenDialog(this, liste, this::speichern);
     }
@@ -154,13 +155,20 @@ public class BaustelleActivity extends Activity {
                 Ui.GRUEN, offeneMaengel > 0, v -> dokumente(Rapport.ABNAHME)), spalte(false));
         inhalt.addView(r4, zeile(Ui.dp(this, 18)));
 
+        // Microsoft Teams: ein Team pro Baustelle
+        boolean imTeam = TeamSync.verknuepft(liste);
+        boolean konflikt = imTeam && TeamSync.konflikt(this, liste.id);
+        inhalt.addView(kachel("👥", imTeam ? "Team: " + liste.teamName : "Teams",
+                imTeam ? TeamSync.statusText(this, liste) : "Mit einem Microsoft-Teams-Team verknüpfen –\ndann arbeiten alle am selben Stand",
+                Ui.BLAU, konflikt, v -> team()), zeile(Ui.dp(this, 18)));
+
         // Was noch kommt – ehrlich als „später“ gekennzeichnet.
         TextView spaeter = Ui.text(this, "KOMMT SPÄTER", 13, Ui.GRAU, true);
         spaeter.setLetterSpacing(0.05f);
         spaeter.setPadding(Ui.dp(this, 4), 0, 0, Ui.dp(this, 6));
         inhalt.addView(spaeter);
         LinearLayout r3 = reihe();
-        String[][] bald = {{"📖", "Lexikon"}, {"👥", "Teams"}};
+        String[][] bald = {{"📖", "Lexikon"}};
         for (int i = 0; i < bald.length; i++) {
             TextView t = Ui.text(this, bald[i][0] + "\n" + bald[i][1], 14, Ui.GRAU, false);
             t.setGravity(Gravity.CENTER);
@@ -273,6 +281,88 @@ public class BaustelleActivity extends Activity {
         i.putExtra(RapportActivity.EXTRA_ART, art);
         astOffen = true;
         startActivity(i);
+    }
+
+    // ================================================================ Microsoft Teams
+
+    private void team() {
+        if (!TeamSync.verknuepft(liste)) {
+            Intent i = new Intent(this, TeamsActivity.class);
+            i.putExtra(TeamsActivity.EXTRA_VERKNUEPFEN, liste.id);
+            astOffen = true;
+            startActivity(i);
+            return;
+        }
+        if (TeamSync.konflikt(this, liste.id)) {
+            konfliktFragen(this, liste.id, "Im Team und auf diesem Handy wurde gleichzeitig geändert.", this::neuLaden);
+            return;
+        }
+        new AlertDialog.Builder(this).setTitle("👥 " + liste.teamName)
+                .setMessage(TeamSync.statusText(this, liste) + (TeamSync.fehler(this, liste.id).isEmpty() ? "" : "\n" + TeamSync.fehler(this, liste.id)))
+                .setPositiveButton("⟳ Jetzt abgleichen", (d, w) -> teamAbgleich(false))
+                .setNeutralButton("Verknüpfung lösen", (d, w) -> new AlertDialog.Builder(this)
+                        .setMessage("Die Baustelle bleibt auf dem Handy und im Team, wird aber nicht mehr abgeglichen.")
+                        .setPositiveButton("Lösen", (x, y) -> { TeamSync.trennen(this, liste); neuLaden(); })
+                        .setNegativeButton("Abbrechen", null).show())
+                .setNegativeButton("Schließen", null).show();
+    }
+
+    /** Stand aus dem Team holen bzw. eigene Änderungen hochladen. still: Fehler (z. B. kein Netz) nur kurz melden. */
+    @SuppressWarnings("deprecation")
+    private void teamAbgleich(boolean still) {
+        android.app.ProgressDialog pd = new android.app.ProgressDialog(this);
+        pd.setMessage("⟳ Abgleich mit „" + liste.teamName + "“ …");
+        pd.setCancelable(false);
+        pd.show();
+        String id = liste.id;
+        TeamSync.imHintergrund(() -> TeamSync.abgleichen(this, id, false), (e, f) -> {
+            if (isFinishing()) return;
+            pd.dismiss();
+            if (f != null) {
+                Toast.makeText(this, (still ? "Team gerade nicht erreichbar – du arbeitest auf dem Handy weiter.\n" : "")
+                        + f.getMessage(), Toast.LENGTH_LONG).show();
+                render();
+                return;
+            }
+            if (e == TeamSync.Ergebnis.GELADEN) Toast.makeText(this, "✓ Neuer Stand aus dem Team geladen", Toast.LENGTH_SHORT).show();
+            if (e == TeamSync.Ergebnis.KONFLIKT) {
+                konfliktFragen(this, id, "Im Team und auf diesem Handy wurde gleichzeitig geändert.", this::neuLaden);
+                return;
+            }
+            if (!still && e == TeamSync.Ergebnis.AKTUELL) Toast.makeText(this, "✓ Alles aktuell", Toast.LENGTH_SHORT).show();
+            neuLaden();
+        });
+    }
+
+    private void neuLaden() {
+        Holzliste neu = Storage.laden(this, liste.id);
+        if (neu != null) liste = neu;
+        render();
+    }
+
+    /** Beide Seiten haben geändert: Benutzer entscheidet, welcher Stand gilt. */
+    @SuppressWarnings("deprecation")
+    static void konfliktFragen(Activity act, String id, String grund, Runnable danach) {
+        new AlertDialog.Builder(act).setTitle("⚠ Welcher Stand soll gelten?")
+                .setMessage(grund + "\n\n• Team-Stand übernehmen: deine Änderungen auf diesem Handy seit dem letzten Abgleich gehen verloren."
+                        + "\n• Meinen Stand hochladen: der Stand im Team wird überschrieben.")
+                .setPositiveButton("Team-Stand", (d, w) -> loesen(act, id, true, danach))
+                .setNeutralButton("Meinen Stand", (d, w) -> loesen(act, id, false, danach))
+                .setNegativeButton("Später", (d, w) -> danach.run())
+                .setCancelable(false).show();
+    }
+
+    @SuppressWarnings("deprecation")
+    private static void loesen(Activity act, String id, boolean teamStand, Runnable danach) {
+        android.app.ProgressDialog pd = new android.app.ProgressDialog(act);
+        pd.setMessage("⟳ Einen Moment …");
+        pd.setCancelable(false);
+        pd.show();
+        TeamSync.imHintergrund(() -> { TeamSync.loesen(act, id, teamStand); return true; }, (ok, f) -> {
+            pd.dismiss();
+            if (f != null) Toast.makeText(act, f.getMessage(), Toast.LENGTH_LONG).show();
+            danach.run();
+        });
     }
 
     private void arbeitsanweisung() {

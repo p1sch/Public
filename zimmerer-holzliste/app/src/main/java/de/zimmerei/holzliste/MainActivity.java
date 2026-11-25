@@ -64,6 +64,19 @@ public class MainActivity extends Activity {
         lpSt.setMargins(Ui.dp(this, 14), Ui.dp(this, 8), Ui.dp(this, 14), 0);
         root.addView(stempel, lpSt);
 
+        // Microsoft Teams: ein Team pro Baustelle
+        Button teams = new Button(this);
+        teams.setText("👥  Meine Teams");
+        teams.setAllCaps(false);
+        teams.setTextSize(17);
+        teams.setTypeface(Typeface.DEFAULT_BOLD);
+        teams.setTextColor(Ui.BLAU);
+        teams.setBackground(Ui.rounded(Ui.WEISS, Ui.BLAU, Ui.dp(this, 12), Ui.dp(this, 2)));
+        LinearLayout.LayoutParams lpT = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 52));
+        lpT.setMargins(Ui.dp(this, 14), Ui.dp(this, 8), Ui.dp(this, 14), 0);
+        teams.setOnClickListener(v -> startActivity(new Intent(this, TeamsActivity.class)));
+        root.addView(teams, lpT);
+
         // Arbeitsanweisung ganz oben: der schnellste Weg zur fertigen Liste
         Button aw = new Button(this);
         aw.setText("📄  Neue Baustelle aus PDF");
@@ -103,6 +116,7 @@ public class MainActivity extends Activity {
         adapter.notifyDataSetChanged();
         leer.setVisibility(listen.isEmpty() ? View.VISIBLE : View.GONE);
         stempelAnzeigen();
+        TeamSync.anstossen(this); // offene Änderungen und Postausgang ins Team
     }
 
     private void stempelAnzeigen() {
@@ -197,6 +211,12 @@ public class MainActivity extends Activity {
             TextView g = Ui.text(MainActivity.this, "geändert " + DateFormat.format("dd.MM.yyyy HH:mm", h.geaendert), 11, Ui.GRAU, false);
             left.addView(t);
             if (sub.length() > 0) left.addView(s);
+            if (TeamSync.verknuepft(h)) {
+                TextView tm = Ui.text(MainActivity.this, "👥 " + h.teamName + "  ·  " + TeamSync.statusText(MainActivity.this, h), 13,
+                        TeamSync.konflikt(MainActivity.this, h.id) ? Ui.AKZENT : Ui.BLAU, true);
+                tm.setPadding(0, Ui.dp(MainActivity.this, 3), 0, 0);
+                left.addView(tm);
+            }
             StringBuilder stand = new StringBuilder();
             if (!h.werkzeug.isEmpty()) stand.append("🔧 ").append(h.anzahlEingepackt()).append("/").append(h.werkzeug.size()).append(" dabei");
             if (!h.aufgaben.isEmpty()) stand.append(stand.length() > 0 ? "   " : "").append("✅ ").append(h.anzahlErledigt()).append("/")

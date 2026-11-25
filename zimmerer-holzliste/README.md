@@ -75,6 +75,39 @@ Ebenfalls auf der Baustellen-Seite, mit denselben Fotos, Vorschau, Unterschrift 
   Mängelliste mit Status und Frist. Auftraggeber **und** Auftragnehmer unterschreiben am Handy.
   „→ Offene Mängel als Aufgaben“ legt sie als 🔴 dringende Aufgaben (mit Frist) in der Baustelle an.
 
+## 👥 Microsoft Teams (ein Team pro Baustelle)
+
+Startseite → **👥 Meine Teams** zeigt alle Teams, in denen du Mitglied bist. Ein Team ist eine Baustelle:
+antippen → die Baustelle öffnet sich (beim ersten Mal wird sie aus dem Team geladen oder neu angelegt).
+Eine vorhandene Baustelle verknüpft man über die Kachel **👥 Teams** auf der Baustellen-Seite.
+
+- **Gemeinsamer Stand:** Jede Änderung (Material, Werkzeug, Aufgaben, Rapporte …) wird im Hintergrund ins Team
+  hochgeladen; beim Öffnen der Baustelle holt die App den neuesten Stand. Haben zwei gleichzeitig geändert, fragt
+  die App, welcher Stand gilt – überschrieben wird nie ohne Nachfrage. Ohne Netz wird später nachgeholt.
+- **Berichte ins Team:** Bei Rapport, Dokumentation und Abnahme → „📤 PDF senden“ → **👥 Ins Team**. Die PDF landet im
+  Kanal „Allgemein“ unter *Dateien* in „Rapporte“, „Bautagebuch“ bzw. „Abnahmen“, dazu ein Beitrag im Kanal mit
+  Link – sichtbar für alle am PC. Ohne Netz wartet der Bericht im Postausgang.
+- Im Team liegen die App-Daten unter *Dateien → Materialliste* (`baustelle.json` und Fotos). Diese Dateien bitte nicht
+  von Hand ändern.
+
+### Microsoft Teams einrichten (einmalig, Admin von Microsoft 365)
+
+Die App muss im Microsoft-365-Verzeichnis registriert werden (kostenlos). Die Menüs heißen je nach Stand leicht anders.
+
+1. <https://entra.microsoft.com> öffnen → **Anwendungen → App-Registrierungen → Neue Registrierung**
+   - Name: `Materialliste`
+   - Unterstützte Kontotypen: **Nur Konten in diesem Organisationsverzeichnis**
+   - Umleitungs-URI: Plattform **Öffentlicher Client/nativ (mobil und Desktop)**, Wert **`de.zimmerei.holzliste://auth`**
+   - **Registrieren**
+2. **API-Berechtigungen → Berechtigung hinzufügen → Microsoft Graph → Delegierte Berechtigungen**:
+   `User.Read`, `Team.ReadBasic.All`, `Channel.ReadBasic.All`, `ChannelMessage.Send`, `Files.ReadWrite.All`, `offline_access`
+   → danach **Administratorzustimmung für „Firma“ erteilen**.
+3. Auf der **Übersicht** stehen **Anwendungs-ID (Client-ID)** und **Verzeichnis-ID (Mandanten-ID)**. Beide in der App unter
+   **👥 Meine Teams** eintragen, dann **Mit Microsoft anmelden**. (Die Client-ID ist kein Geheimnis; ein geheimer
+   Schlüssel wird nicht gebraucht.)
+
+Die App arbeitet nur im Namen des angemeldeten Benutzers: Sie sieht nur Teams, in denen er Mitglied ist.
+
 ## Installation
 
 Die APK wird automatisch per GitHub Actions gebaut (`.github/workflows/holzliste-android.yml`)

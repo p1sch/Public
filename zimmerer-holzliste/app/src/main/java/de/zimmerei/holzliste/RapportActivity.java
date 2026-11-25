@@ -933,8 +933,25 @@ public class RapportActivity extends Activity {
         d.show();
     }
 
+    /** Bei einer Team-Baustelle: ins Team ablegen oder mit einer anderen App senden. */
     private void senden() {
         speichern(false);
+        if (!TeamSync.verknuepft(baustelle)) { andereApp(); return; }
+        long am = TeamSync.abgelegtAm(this, rapport.id);
+        String stand = TeamSync.wartet(this, rapport.id) ? "⟳ wartet im Postausgang aufs Netz"
+                : am == 0 ? "noch nicht im Team" : "✓ im Team abgelegt am " + Zeiten.datum(am) + " " + Zeiten.uhr(am);
+        new AlertDialog.Builder(this).setTitle("📤 " + name(rapport.art) + " senden")
+                .setMessage(stand)
+                .setPositiveButton("👥 Ins Team „" + baustelle.teamName + "“", (d, w) -> {
+                    TeamSync.ablegen(this, baustelle, rapport);
+                    Toast.makeText(this, "Geht ins Team: PDF in die Dateien unter „" + TeamSync.ordner(rapport)
+                            + "“ und ein Beitrag im Kanal. Ohne Netz wartet es im Postausgang.", Toast.LENGTH_LONG).show();
+                })
+                .setNeutralButton("Andere App …", (d, w) -> andereApp())
+                .setNegativeButton("Abbrechen", null).show();
+    }
+
+    private void andereApp() {
         try {
             File dir = new File(getCacheDir(), "export");
             if (!dir.exists()) dir.mkdirs();

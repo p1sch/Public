@@ -46,9 +46,16 @@ public final class Storage {
         return read(new File(dir(c), id + ".json"));
     }
 
+    /** Speichert und lädt die Änderung bei einer Team-Baustelle im Hintergrund ins Team hoch. */
     public static void speichern(Context c, Holzliste h) {
+        schreiben(c, h, true);
+        TeamSync.geaendert(c, h);
+    }
+
+    /** Nur schreiben (für den Team-Abgleich selbst); zeitstempel = „geändert“ auf jetzt setzen. */
+    static synchronized void schreiben(Context c, Holzliste h, boolean zeitstempel) {
         if (h.id == null) h.id = UUID.randomUUID().toString();
-        h.geaendert = System.currentTimeMillis();
+        if (zeitstempel || h.geaendert == 0) h.geaendert = Math.max(System.currentTimeMillis(), h.geaendert + 1);
         File target = new File(dir(c), h.id + ".json");
         File tmp = new File(dir(c), h.id + ".tmp");
         try (FileOutputStream out = new FileOutputStream(tmp)) {
@@ -79,6 +86,7 @@ public final class Storage {
         copy.awDatei = ""; // die PDF gehört zur Original-Baustelle
         copy.awDatum = "";
         copy.rapporte.clear(); // Rapporte (mit Fotos und Unterschrift) gehören zur Original-Baustelle
+        copy.teamId = copy.teamName = copy.teamKanal = copy.teamDrive = copy.teamOrdner = ""; // die Kopie gehört keinem Team
         speichern(c, copy);
         return copy;
     }

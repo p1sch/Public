@@ -23,6 +23,8 @@ public class Holzliste {
     public String awDatei = "";
     public String awDatum = "";
     public long geaendert;
+    /** Microsoft-Teams-Team dieser Baustelle (leer = nicht verknüpft), Standardkanal und dessen Dateiordner. */
+    public String teamId = "", teamName = "", teamKanal = "", teamDrive = "", teamOrdner = "";
     public final List<Position> positionen = new ArrayList<>();
     /** Reiter „Werkzeug“: was auf die Baustelle mit muss (zum Abhaken beim Laden). */
     public final List<Werkzeug> werkzeug = new ArrayList<>();
@@ -153,6 +155,15 @@ public class Holzliste {
         o.put("awDatei", awDatei);
         o.put("awDatum", awDatum);
         o.put("geaendert", geaendert);
+        if (teamId != null && !teamId.isEmpty()) {
+            JSONObject t = new JSONObject();
+            t.put("id", teamId);
+            t.put("name", teamName);
+            t.put("kanal", teamKanal);
+            t.put("drive", teamDrive);
+            t.put("ordner", teamOrdner);
+            o.put("team", t);
+        }
         JSONArray a = new JSONArray();
         for (Position p : positionen) a.put(p.toJson());
         o.put("positionen", a);
@@ -180,6 +191,14 @@ public class Holzliste {
         h.awDatei = o.optString("awDatei", "");
         h.awDatum = o.optString("awDatum", "");
         h.geaendert = o.optLong("geaendert", 0);
+        JSONObject t = o.optJSONObject("team");
+        if (t != null) {
+            h.teamId = t.optString("id", "");
+            h.teamName = t.optString("name", "");
+            h.teamKanal = t.optString("kanal", "");
+            h.teamDrive = t.optString("drive", "");
+            h.teamOrdner = t.optString("ordner", "");
+        }
         JSONArray a = o.optJSONArray("positionen");
         if (a != null) {
             for (int i = 0; i < a.length(); i++) {
