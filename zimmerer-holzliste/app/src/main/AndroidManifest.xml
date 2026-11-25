@@ -35,6 +35,12 @@
             android:exported="false"
             android:parentActivityName=".MainActivity" />
 
+        <activity
+            android:name=".RapportActivity"
+            android:exported="false"
+            android:parentActivityName=".BaustelleActivity"
+            android:windowSoftInputMode="adjustResize" />
+
         <provider
             android:name=".ExportProvider"
             android:authorities="de.zimmerei.holzliste.export"

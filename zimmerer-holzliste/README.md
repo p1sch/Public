@@ -47,6 +47,24 @@ Beispiel: [`beispiel/Beispiel-Materialliste.xlsx`](beispiel/Beispiel-Materiallis
 Zeilen aus der Zwischenablage einfügen (z. B. aus Excel kopiert, Tab- oder Semikolon-getrennt):
 `Bezeichnung; Stück/Menge; Breite; Höhe; Länge; Material; Bemerkung; Einheit`
 
+## 📋 Rapport (Tagesbericht mit Unterschrift)
+
+Auf der Baustellen-Seite → **📋 Rapport** → „＋ Rapport für heute“:
+
+- **⏱ Zeiten** werden aus der Zeiterfassung dieser Baustelle für den Tag übernommen. Kollegen per „＋ Mitarbeiter“
+  ergänzen (Zeiten der letzten Zeile werden vorgeschlagen).
+- **📦 Material** direkt aus der Materialliste der Baustelle ankreuzen, Menge anpassen, wenn nur ein Teil verbaut wurde,
+  oder frei eingeben.
+- **📝 Dokumentation**: Wetter antippen, Temperatur, ausgeführte Arbeiten und Behinderungen – auch per 🎤 Spracheingabe.
+- **📷 Fotos** mit der Kamera oder aus der Galerie (kommen ans Ende der PDF, je eine halbe Seite).
+- **👁 Vorschau** zeigt die Seiten genau wie in der PDF, **✍ Kunde unterschreibt** mit dem Finger am Handy,
+  **📤 PDF senden** per WhatsApp, E-Mail …
+- Änderungen nach dem Unterschreiben entfernen die Unterschrift (der Kunde muss neu unterschreiben).
+
+Menü ⋮ → **🏢 Briefkopf**: Firmenname, Anschrift und Logo (oben rechts auf dem Rapport).
+Menü ⋮ → **💬 Hinweistext-Vorlage**: Text unter „Bemerkung“ für neue Rapporte (mit Vorschlag zum Widerspruchsrecht
+nach VOB/B § 15 Abs. 3 – bitte selbst prüfen).
+
 ## Installation
 
 Die APK wird automatisch per GitHub Actions gebaut (`.github/workflows/holzliste-android.yml`)

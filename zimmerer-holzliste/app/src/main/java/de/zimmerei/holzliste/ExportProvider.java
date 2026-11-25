@@ -32,6 +32,15 @@ public class ExportProvider extends ContentProvider {
 
     @Override
     public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {
+        String name = uri.getLastPathSegment();
+        // Einzige Ausnahme vom Nur-Lesen: die Kamera-App legt hier das Foto für den Rapport ab.
+        if (mode != null && mode.contains("w") && name != null && name.startsWith("kamera_") && name.endsWith(".jpg")
+                && !name.contains("/") && !name.contains("..")) {
+            File dir = new File(getContext().getCacheDir(), "export");
+            if (!dir.exists()) dir.mkdirs();
+            return ParcelFileDescriptor.open(new File(dir, name),
+                    ParcelFileDescriptor.MODE_READ_WRITE | ParcelFileDescriptor.MODE_CREATE | ParcelFileDescriptor.MODE_TRUNCATE);
+        }
         return ParcelFileDescriptor.open(file(uri), ParcelFileDescriptor.MODE_READ_ONLY);
     }
 
@@ -52,6 +61,7 @@ public class ExportProvider extends ContentProvider {
 
     @Override public String getType(Uri uri) {
         String n = uri.getLastPathSegment();
+        if (n != null && n.toLowerCase().endsWith(".jpg")) return "image/jpeg";
         return n != null && n.toLowerCase().endsWith(".pdf") ? "application/pdf" : EditorActivity.XLSX_MIME;
     }
     @Override public Uri insert(Uri uri, ContentValues v) { throw new UnsupportedOperationException(); }

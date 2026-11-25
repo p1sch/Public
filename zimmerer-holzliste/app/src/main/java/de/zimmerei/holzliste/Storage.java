@@ -64,6 +64,8 @@ public final class Storage {
     }
 
     public static void loeschen(Context c, String id) {
+        Holzliste h = laden(c, id);
+        if (h != null) for (Rapport r : h.rapporte) RapportDateien.loeschen(c, r);
         new File(dir(c), id + ".json").delete();
         new File(new File(c.getFilesDir(), "aw"), id + ".pdf").delete();
     }
@@ -76,6 +78,7 @@ public final class Storage {
         for (Aufgabe x : copy.aufgaben) { x.erledigt = false; x.heute = false; }
         copy.awDatei = ""; // die PDF gehört zur Original-Baustelle
         copy.awDatum = "";
+        copy.rapporte.clear(); // Rapporte (mit Fotos und Unterschrift) gehören zur Original-Baustelle
         speichern(c, copy);
         return copy;
     }

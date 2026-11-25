@@ -30,6 +30,9 @@ public class Holzliste {
     /** Reiter „Aufgaben“: To-do-Liste (z. B. aus den Positionen der Arbeitsanweisung). */
     public final List<Aufgabe> aufgaben = new ArrayList<>();
 
+    /** Rapporte (Tagesberichte mit Unterschrift), siehe RapportActivity. */
+    public final List<Rapport> rapporte = new ArrayList<>();
+
     public int anzahlErledigt() {
         int n = 0;
         for (Aufgabe a : aufgaben) if (a.erledigt) n++;
@@ -159,6 +162,9 @@ public class Holzliste {
         JSONArray au = new JSONArray();
         for (Aufgabe x : aufgaben) au.put(x.toJson());
         o.put("aufgaben", au);
+        JSONArray ra = new JSONArray();
+        for (Rapport x : rapporte) ra.put(x.toJson());
+        o.put("rapporte", ra);
         return o;
     }
 
@@ -193,6 +199,13 @@ public class Holzliste {
             for (int i = 0; i < au.length(); i++) {
                 JSONObject x = au.optJSONObject(i);
                 if (x != null) h.aufgaben.add(Aufgabe.fromJson(x));
+            }
+        }
+        JSONArray ra = o.optJSONArray("rapporte");
+        if (ra != null) {
+            for (int i = 0; i < ra.length(); i++) {
+                JSONObject x = ra.optJSONObject(i);
+                if (x != null) h.rapporte.add(Rapport.fromJson(x));
             }
         }
         return h;

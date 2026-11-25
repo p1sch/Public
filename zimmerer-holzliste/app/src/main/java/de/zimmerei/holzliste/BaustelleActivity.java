@@ -122,7 +122,20 @@ public class BaustelleActivity extends Activity {
                 (min == 0 ? "noch keine Zeiten" : Zeiten.hMin(min) + " auf dieser Baustelle")
                         + (hier ? "\n● läuft gerade" + (lauf.taetigkeit.isEmpty() ? "" : " – " + lauf.taetigkeit)
                         : "\nAntippen: Kommen / Gehen stempeln"),
-                Ui.PRIMAER, hier, v -> stunden()), zeile(Ui.dp(this, 18)));
+                Ui.PRIMAER, hier, v -> stunden()), zeile(Ui.dp(this, 10)));
+
+        // Rapport: Tagesbericht mit Stunden, Material, Fotos und Unterschrift des Kunden
+        int nR = liste.rapporte.size(), uR = 0;
+        Rapport letzter = null;
+        for (Rapport r : liste.rapporte) {
+            if (r.unterschrieben()) uR++;
+            if (letzter == null || r.tag > letzter.tag) letzter = r;
+        }
+        inhalt.addView(kachel("📋", "Rapport",
+                nR == 0 ? "Tagesbericht mit Stunden, Material, Fotos –\nKunde unterschreibt am Handy"
+                        : nR + (nR == 1 ? " Rapport" : " Rapporte") + (uR == nR ? ", alle unterschrieben" : ", " + (nR - uR) + " offen")
+                        + "\nzuletzt " + Zeiten.datum(letzter.tag),
+                Ui.AKZENT, false, v -> rapporte()), zeile(Ui.dp(this, 18)));
 
         // Was noch kommt – ehrlich als „später“ gekennzeichnet.
         TextView spaeter = Ui.text(this, "KOMMT SPÄTER", 13, Ui.GRAU, true);
@@ -130,7 +143,7 @@ public class BaustelleActivity extends Activity {
         spaeter.setPadding(Ui.dp(this, 4), 0, 0, Ui.dp(this, 6));
         inhalt.addView(spaeter);
         LinearLayout r3 = reihe();
-        String[][] bald = {{"📖", "Lexikon"}, {"📷", "Fotos"}, {"📋", "Berichte"}};
+        String[][] bald = {{"📖", "Lexikon"}, {"📷", "Fotos"}, {"✅", "Abnahme"}};
         for (int i = 0; i < bald.length; i++) {
             TextView t = Ui.text(this, bald[i][0] + "\n" + bald[i][1], 14, Ui.GRAU, false);
             t.setGravity(Gravity.CENTER);
@@ -233,6 +246,13 @@ public class BaustelleActivity extends Activity {
     private void stunden() {
         Intent i = new Intent(this, ZeitActivity.class);
         i.putExtra(ZeitActivity.EXTRA_BAUSTELLE, liste.id);
+        astOffen = true;
+        startActivity(i);
+    }
+
+    private void rapporte() {
+        Intent i = new Intent(this, RapportActivity.class);
+        i.putExtra(RapportActivity.EXTRA_BAUSTELLE, liste.id);
         astOffen = true;
         startActivity(i);
     }
