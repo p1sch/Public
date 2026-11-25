@@ -129,6 +129,29 @@ tfoot td { font-weight: 700; background: var(--summe); }
 .fotos a { display: block; aspect-ratio: 4/3; background: var(--linie); border-radius: 8px; overflow: hidden; }
 .fotos img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
+/* Material bearbeiten */
+tr.klickbar { cursor: pointer; }
+tr.klickbar:hover td { background: #F5F8FB; }
+.pfeile { white-space: nowrap; width: 1%; }
+.klein-pfeil { border: 1px solid var(--linie); background: #fff; border-radius: 6px; width: 26px; height: 26px; cursor: pointer; color: var(--grau); margin-left: 2px; }
+.klein-pfeil:hover:not(:disabled) { color: var(--primaer); border-color: var(--primaer); }
+.klein-pfeil:disabled { opacity: .3; cursor: default; }
+dialog.editor { border: 0; border-radius: 16px; padding: 0; width: min(560px, calc(100% - 24px)); max-height: calc(100% - 24px); box-shadow: 0 20px 60px rgba(18,50,79,.3); }
+dialog.editor::backdrop { background: rgba(18, 50, 79, .45); }
+dialog.editor form { padding: 18px 20px 16px; }
+dialog.editor h2 { margin-bottom: 4px; }
+.zwei { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.drei { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.abschnitt-titel { margin-top: 14px; font-weight: 700; color: var(--dunkel); font-size: 14px; }
+.ergebnis { margin-top: 14px; background: var(--summe); border-radius: 10px; padding: 10px 12px; font-weight: 700; color: var(--dunkel); white-space: pre-line; text-align: center; }
+.ergebnis:empty { display: none; }
+dialog details summary { cursor: pointer; color: var(--primaer); font-weight: 700; margin-top: 14px; }
+.dialog-knoepfe { margin-top: 16px; align-items: center; }
+.knopf.rot { border-color: var(--rot); color: var(--rot); }
+.fehlertext { color: var(--rot); margin: 8px 0 0; min-height: 0; }
+.fehlertext:empty { display: none; }
+input.falsch { border-color: var(--rot); background: #FDECEA; }
+[hidden] { display: none !important; }
 .hinweis { color: var(--grau); text-align: center; padding: 28px 12px; }
 .fehler { border-left: 5px solid var(--rot); }
 .leer { color: var(--grau); }

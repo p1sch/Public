@@ -152,6 +152,81 @@ async function downloadRoute(route) {
   for (const t of ["24 Stk", "620 m", "7 Platten", "20 Paket", "993,10 €", "Holz "]) assert.ok(mat.includes(t), "Material enthält " + t);
   await bild("web_3_material");
 
+  // 3b. Material bearbeiten
+  page.on("dialog", d => d.accept()); // Rückfragen beim Löschen bestätigen
+  const zeile = name => page.locator("tr.klickbar", { has: page.locator("b", { hasText: new RegExp("^" + name + "$") }) });
+  const pos = () => m365.json(DATEI).positionen;
+  // wartet, bis die Aktion wirklich im Team gespeichert und neu angezeigt ist (die Meldung davor kann noch zu sehen sein)
+  const speichert = async aktion => {
+    const n0 = m365.puts.length;
+    await aktion();
+    for (let i = 0; m365.puts.length <= n0; i++) { assert.ok(i < 200, "nicht gespeichert"); await page.waitForTimeout(25); }
+    await page.waitForTimeout(150);
+  };
+  //    Stückzahl ändern
+  await zeile("Sparren").click();
+  await page.fill("#f-stk", "26");
+  assert.ok((await page.textContent("#ergebnis")).includes("192,40 m"), "Vorschau rechnet mit");
+  await speichert(() => page.click("#f-ok"));
+  assert.strictEqual(pos().find(x => x.bez === "Sparren").stk, 26);
+  assert.ok((await page.textContent("#ansicht")).includes("26 Stk"));
+  //    ungültige Zahl → nicht speichern
+  await zeile("Sparren").click();
+  await page.fill("#f-stk", "zwölf");
+  await page.click("#f-ok");
+  assert.ok(await page.isVisible("dialog.editor"), "Dialog bleibt offen");
+  assert.ok((await page.textContent("#fehlertext")).includes("gültige Zahl"));
+  await page.click("#f-abbrechen");
+  //    neue Platte: 5 × 4 m + 10 % bei 250 × 125 cm → 8 Platten
+  await page.click("#neu-pos");
+  await page.selectOption("#f-typ", "platte");
+  await page.fill("#f-bez", "Bodenplatten");
+  await page.fill("#f-flL", "5"); await page.fill("#f-flB", "4"); await page.fill("#f-vs", "10");
+  await page.fill("#f-pl", "250"); await page.fill("#f-pb", "125"); await page.fill("#f-pd", "22");
+  await page.fill("#f-mat", "OSB/3");
+  assert.ok((await page.textContent("#ergebnis")).includes("→ Du brauchst 8 Platten"));
+  await bild("web_3b_platte", { fullPage: false });
+  await speichert(() => page.click("#f-ok"));
+  const pl = pos().find(x => x.bez === "Bodenplatten");
+  assert.deepStrictEqual([pl.typ, pl.l, pl.b, pl.h, pl.flL, pl.flB, pl.vs, pl.holzart], ["platte", 2.5, 125, 2.2, 5, 4, 10, "OSB/3"]);
+  //    neues Material mit Paketen und Preis: 50 m² + 5 % in Paketen à 5,2 m² → 11 Paket, 8,90 €/m² → 509,08 €
+  await page.click("#neu-pos");
+  await page.selectOption("#f-typ", "material");
+  await page.fill("#f-bez", "Trittschalldämmung");
+  await page.fill("#f-menge", "50"); await page.fill("#f-einh", "qm"); await page.fill("#f-mvs", "5");
+  await page.fill("#f-pack", "5,2"); await page.fill("#f-packname", "Paket");
+  await page.click("#mehr summary");
+  await page.fill("#f-preis", "8,90"); await page.fill("#f-peinh", "m²");
+  const erg = await page.textContent("#ergebnis");
+  assert.ok(erg.includes("→ Du brauchst 11 Paket") && erg.includes("509,08 €"), erg);
+  await speichert(() => page.click("#f-ok"));
+  const tr = pos().find(x => x.bez === "Trittschalldämmung");
+  assert.deepStrictEqual([tr.typ, tr.menge, tr.einh, tr.vs, tr.pack, tr.packName, tr.preis, tr.preisEinh], ["material", 50, "m²", 5, 5.2, "Paket", 8.9, "m²"]);
+  assert.ok((await page.textContent("tfoot")).includes("1.502,18 €"), "Summe 993,10 + 509,08: " + await page.textContent("tfoot"));
+  //    Überschrift ganz nach unten → verschieben
+  await page.click("#neu-titel");
+  await page.fill("#f-bez", "Boden EG");
+  await speichert(() => page.click("#f-ok"));
+  assert.strictEqual(pos()[pos().length - 1].bez, "Boden EG");
+  await speichert(() => page.locator("tr.abschnitt", { hasText: "Boden EG" }).locator("[data-hoch]").click());
+  assert.strictEqual(pos()[pos().length - 2].bez, "Boden EG");
+  //    gleichzeitig fügt ein Handy oben eine Position ein → trotzdem die richtige Zeile ändern
+  const fremd2 = m365.json(DATEI);
+  fremd2.positionen.unshift({ typ: "holz", bez: "Vom Handy", stk: 1, b: 10, h: 10, l: 2, holzart: "", bem: "" });
+  m365.ablegen(DATEI, JSON.stringify(fremd2));
+  await zeile("Firstpfette").click();
+  await page.fill("#f-stk", "2");
+  await speichert(() => page.click("#f-ok"));
+  assert.strictEqual(pos()[0].bez, "Vom Handy", "Handy-Position bleibt");
+  assert.strictEqual(pos().find(x => x.bez === "Firstpfette").stk, 2, "richtige Zeile geändert");
+  assert.strictEqual(pos().filter(x => x.bez === "Firstpfette").length, 1);
+  //    löschen
+  await zeile("Bodenplatten").click();
+  await speichert(() => page.click("#f-weg"));
+  assert.ok(!pos().some(x => x.bez === "Bodenplatten"));
+  await bild("web_3c_material_bearbeitet");
+  fs.writeFileSync(path.join(BEISPIEL, "vom-web.json"), m365.dateien.get(DATEI).daten);
+
   // 4. Aufgabe hinzufügen → mit If-Match ins Team
   await page.click("text=✅ Aufgaben");
   await page.fill("#a-text", "Gerüst Giebelseite abbauen");
@@ -194,7 +269,7 @@ async function downloadRoute(route) {
   // 8. Gespeicherte Datei ist weiterhin vollständig (Handy kann sie lesen)
   d = m365.json(DATEI);
   const original = JSON.parse(fs.readFileSync(path.join(BEISPIEL, "baustelle.json"), "utf8"));
-  assert.strictEqual(d.positionen.length, original.positionen.length);
+  assert.strictEqual(d.positionen.length, original.positionen.length + 3); // + Trittschalldämmung, Boden EG, Vom Handy
   assert.strictEqual(d.rapporte.length, original.rapporte.length);
   assert.deepStrictEqual(Object.keys(d.rapporte[0]).sort(), Object.keys(original.rapporte[0]).sort());
   assert.ok(d.geaendert > original.geaendert);

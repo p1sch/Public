@@ -113,7 +113,9 @@ Die App arbeitet nur im Namen des angemeldeten Benutzers: Sie sieht nur Teams, i
 ## 💻 PC-Version im Browser
 
 **https://p1sch.github.io/Public/** – dieselben Baustellen aus Microsoft Teams am PC (Code in `docs/` im Repository-Hauptordner):
-Übersicht mit Summen und offenen Mängeln, Materialliste (Rechnung genau wie in der App) mit Export für Excel (CSV),
+Übersicht mit Summen und offenen Mängeln, Materialliste (Rechnung genau wie in der App) **bearbeiten** – Balken, Latten,
+Platten (Plattenanzahl wird berechnet), Material mit Packungen, Preise, Überschriften; ändern, löschen, verschieben –
+mit Export für Excel (CSV),
 Aufgaben anlegen/abhaken/löschen, Werkzeug abhaken, alle Rapporte, Bautagebuch-Einträge und Abnahmen mit Fotos,
 Unterschriften und Link zur PDF im Team, Mängel abhaken, Notiz, Drucken. Änderungen sind sofort auf den Handys
 (beim nächsten Öffnen der Baustelle). Speichert gleichzeitig ein Handy, lädt die Web-App den neuen Stand und wendet die

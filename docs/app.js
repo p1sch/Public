@@ -478,31 +478,282 @@ function material(el, b) {
   const pos = d.positionen || [];
   const s = ML.summen(d);
   let nr = 0;
-  const zeilen = pos.map(p => {
-    if (p.typ === ML.TITEL) return `<tr class="abschnitt"><td colspan="6">${esc(p.bez)}</td></tr>`;
+  const pfeile = i => `<td class="r nicht-drucken pfeile"><button class="klein-pfeil" data-hoch="${i}" title="nach oben" aria-label="nach oben" ${i === 0 ? "disabled" : ""}>↑</button><button class="klein-pfeil" data-runter="${i}" title="nach unten" aria-label="nach unten" ${i === pos.length - 1 ? "disabled" : ""}>↓</button></td>`;
+  const zeilen = pos.map((p, i) => {
+    if (p.typ === ML.TITEL) return `<tr class="abschnitt klickbar" data-i="${i}"><td colspan="6">${esc(p.bez)}</td>${pfeile(i)}</tr>`;
     nr++;
     const bt = ML.betrag(p);
-    return `<tr><td class="r ausblenden-schmal">${nr}</td><td class="menge">${esc(ML.bestellText(p))}</td>
+    return `<tr class="klickbar" data-i="${i}"><td class="r ausblenden-schmal">${nr}</td><td class="menge">${esc(ML.bestellText(p))}</td>
       <td><b>${esc(p.bez || p.holzart)}</b><div class="klein">${esc(ML.details(p))}</div></td>
       <td class="r ausblenden-schmal">${esc(ML.werte(p))}</td>
       <td class="r ausblenden-schmal">${p.preis != null ? ML.euro(p.preis) + " / " + esc(ML.preisEinheit(p)) : ""}</td>
-      <td class="r">${bt != null ? ML.euro(bt) : ""}</td></tr>`;
+      <td class="r">${bt != null ? ML.euro(bt) : ""}</td>${pfeile(i)}</tr>`;
   }).join("");
   el.innerHTML = `
     <div class="knoepfe nicht-drucken" style="margin-bottom:12px">
+      <button class="knopf voll klein" id="neu-pos">＋ Position</button>
+      <button class="knopf klein" id="neu-titel">＋ Überschrift</button>
       <button class="knopf klein" id="csv">⬇ Für Excel (CSV)</button>
     </div>
     <div class="karte tabelle-rahmen">
       ${pos.length ? `<table>
         <thead><tr><th class="r ausblenden-schmal">Pos.</th><th>Bestellen</th><th>Bezeichnung</th><th class="r ausblenden-schmal">Werte</th>
-        <th class="r ausblenden-schmal">Preis</th><th class="r">Betrag</th></tr></thead>
+        <th class="r ausblenden-schmal">Preis</th><th class="r">Betrag</th><th class="nicht-drucken"></th></tr></thead>
         <tbody>${zeilen}</tbody>
         <tfoot><tr><td class="ausblenden-schmal"></td><td colspan="2">${s.anzahl} Positionen${s.holzM3 > 0 ? " · Holz " + ML.fix(s.holzM3, 2) + " m³" : ""}${s.platten > 0 ? " · " + ML.fix(s.platten, 0) + " Platten" : ""}</td>
-        <td class="ausblenden-schmal"></td><td class="ausblenden-schmal r">Summe netto</td><td class="r">${s.hatPreise ? ML.euro(s.betrag) : "–"}</td></tr></tfoot>
-      </table>` : '<p class="hinweis">Die Materialliste ist noch leer – Positionen kommen aus der Handy-App.</p>'}
+        <td class="ausblenden-schmal"></td><td class="ausblenden-schmal r">Summe netto</td><td class="r">${s.hatPreise ? ML.euro(s.betrag) : "–"}</td><td class="nicht-drucken"></td></tr></tfoot>
+      </table>` : '<p class="hinweis">Die Materialliste ist noch leer – „＋ Position“ anlegen.</p>'}
     </div>
-    <p class="leer nicht-drucken" style="margin-top:10px">Positionen anlegen und ändern geht vorerst in der Handy-App; hier siehst du immer den aktuellen Stand.</p>`;
+    <p class="leer nicht-drucken" style="margin-top:10px">Zeile anklicken zum Ändern. Artikel aus DATANORM- und Inventarlisten wählt man in der Handy-App.</p>`;
   $("#csv").onclick = () => csv(d);
+  $("#neu-pos").onclick = () => positionBearbeiten(b, -1, { typ: ML.HOLZ });
+  $("#neu-titel").onclick = () => positionBearbeiten(b, -1, { typ: ML.TITEL });
+  el.querySelectorAll("tr.klickbar").forEach(tr => tr.onclick = e => {
+    if (e.target.closest("button")) return;
+    const i = Number(tr.dataset.i);
+    positionBearbeiten(b, i, pos[i]);
+  });
+  el.querySelectorAll("[data-hoch],[data-runter]").forEach(k => k.onclick = () => {
+    const i = Number(k.dataset.hoch != null ? k.dataset.hoch : k.dataset.runter);
+    verschieben(b, i, k.dataset.hoch != null ? -1 : 1);
+  });
+}
+
+/** Position im aktuellen Stand wiederfinden: über den Inhalt, nicht die Nummer (ein Handy kann inzwischen umsortiert haben). */
+function findePosition(liste, vorlage, beiIndex) {
+  const s = JSON.stringify(vorlage);
+  if (JSON.stringify(liste[beiIndex]) === s) return beiIndex;
+  return liste.findIndex(p => JSON.stringify(p) === s);
+}
+
+function verschieben(b, i, richtung) {
+  const p = b.daten.positionen[i];
+  aendern(b, n => {
+    const l = n.positionen || [];
+    const j = findePosition(l, p, i);
+    if (j < 0 || j + richtung < 0 || j + richtung >= l.length) return false;
+    [l[j], l[j + richtung]] = [l[j + richtung], l[j]];
+  }, "Verschoben");
+}
+
+/** Zahl wie in der App: Komma oder Punkt, „1.234,5“ geht auch. Leer → null, ungültig → NaN. */
+function zahl(s) {
+  s = String(s == null ? "" : s).trim().replace(/\s/g, "");
+  if (!s) return null;
+  if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+  const d = Number(s);
+  return isFinite(d) ? d : NaN;
+}
+
+const TYPEN = [[ML.HOLZ, "🌲 Balken & Kanthölzer"], [ML.LFM, "📏 Latten & Bretter"], [ML.PLATTE, "▦ Platten"], [ML.MATERIAL, "📦 Material"], [ML.TITEL, "≡ Überschrift"]];
+
+function positionBearbeiten(b, index, vorlage) {
+  const neu = index < 0;
+  const p = JSON.parse(JSON.stringify(vorlage));
+  const z = d => d == null ? "" : ML.num(d);
+  const dlg = document.createElement("dialog");
+  dlg.className = "editor";
+  const liste = (id, l) => `<datalist id="${id}">${l.map(x => `<option value="${esc(x)}">`).join("")}</datalist>`;
+  const bekannt = [...new Set((b.daten.positionen || []).map(x => x.holzart).filter(x => !leer(x)))];
+  dlg.innerHTML = `
+    <form method="dialog" novalidate>
+      <h2>${neu ? (p.typ === ML.TITEL ? "Überschrift hinzufügen" : "Position hinzufügen") : "Ändern"}</h2>
+      <label for="f-typ">Art</label>
+      <select id="f-typ">${TYPEN.map(([k, n]) => `<option value="${k}" ${k === (p.typ || ML.HOLZ) ? "selected" : ""}>${n}</option>`).join("")}</select>
+      <label for="f-bez" id="l-bez">Was? (Bezeichnung)</label>
+      <input type="text" id="f-bez" value="${esc(p.bez)}" list="v-bez" autocomplete="off">
+      <div data-nur="holz" class="zwei">
+        <div><label for="f-stk">Wie viele Stück?</label><input type="text" inputmode="decimal" id="f-stk" value="${z(p.stk)}"></div>
+        <div><label for="f-l">Länge je Stück [m]</label><input type="text" inputmode="decimal" id="f-l" value="${p.typ === ML.HOLZ ? z(p.l) : ""}"></div>
+      </div>
+      <div data-nur="lfm"><label for="f-lfm">Wie viele Meter insgesamt?</label><input type="text" inputmode="decimal" id="f-lfm" value="${z(p.lfm)}"></div>
+      <div data-nur="holz lfm" class="zwei">
+        <div><label for="f-b">Querschnitt Breite [cm]</label><input type="text" inputmode="decimal" id="f-b" value="${p.typ === ML.PLATTE ? "" : z(p.b)}"></div>
+        <div><label for="f-h">Höhe [cm]</label><input type="text" inputmode="decimal" id="f-h" value="${p.typ === ML.PLATTE ? "" : z(p.h)}"></div>
+      </div>
+      <div data-nur="platte">
+        <div class="abschnitt-titel">Welche Fläche wird belegt?</div>
+        <div class="zwei">
+          <div><label for="f-flL">Länge [m]</label><input type="text" inputmode="decimal" id="f-flL" value="${z(p.flL)}"></div>
+          <div><label for="f-flB">Breite [m]</label><input type="text" inputmode="decimal" id="f-flB" value="${z(p.flB)}"></div>
+        </div>
+        <div class="zwei">
+          <div><label for="f-fl">oder gleich m²</label><input type="text" inputmode="decimal" id="f-fl" value="${z(p.fl)}"></div>
+          <div><label for="f-vs">Verschnitt [%]</label><input type="text" inputmode="decimal" id="f-vs" value="${p.typ === ML.PLATTE ? z(p.vs) : "10"}"></div>
+        </div>
+        <div class="abschnitt-titel">Plattengröße</div>
+        <div class="drei">
+          <div><label for="f-pl">Länge [cm]</label><input type="text" inputmode="decimal" id="f-pl" value="${p.typ === ML.PLATTE && p.l != null ? ML.num(p.l * 100) : ""}"></div>
+          <div><label for="f-pb">Breite [cm]</label><input type="text" inputmode="decimal" id="f-pb" value="${p.typ === ML.PLATTE ? z(p.b) : ""}"></div>
+          <div><label for="f-pd">Dicke [mm]</label><input type="text" inputmode="decimal" id="f-pd" value="${p.typ === ML.PLATTE && p.h != null ? ML.num(p.h * 10) : ""}"></div>
+        </div>
+      </div>
+      <div data-nur="material">
+        <div class="zwei">
+          <div><label for="f-menge">Wie viel?</label><input type="text" inputmode="decimal" id="f-menge" value="${z(p.menge)}"></div>
+          <div><label for="f-einh">Einheit</label><input type="text" id="f-einh" value="${esc(p.einh || "")}" placeholder="Stk" list="v-einh"></div>
+        </div>
+        <div class="zwei">
+          <div><label for="f-mvs">Reserve / Verschnitt [%]</label><input type="text" inputmode="decimal" id="f-mvs" value="${p.typ === ML.MATERIAL ? z(p.vs) : ""}"></div><div></div>
+        </div>
+        <div class="abschnitt-titel">Packung (optional) – z. B. Paket à 5,2 m²</div>
+        <div class="zwei">
+          <div><label for="f-pack">Inhalt je Packung</label><input type="text" inputmode="decimal" id="f-pack" value="${z(p.pack)}"></div>
+          <div><label for="f-packname">Packung</label><input type="text" id="f-packname" value="${esc(p.packName || "")}" placeholder="Paket" list="v-pack"></div>
+        </div>
+      </div>
+      <div data-nicht="titel">
+        <label for="f-mat" id="l-mat">Holzart / Qualität</label>
+        <input type="text" id="f-mat" value="${esc(p.holzart || "")}" list="v-mat" autocomplete="off">
+        <div class="ergebnis" id="ergebnis"></div>
+        <details id="mehr" ${p.preis != null || !leer(p.bem) || !leer(p.artNr) || p.fb != null || p.fh != null ? "open" : ""}>
+          <summary>Weitere Angaben (Preis, Bemerkung, Fertigmaß)</summary>
+          <div class="zwei">
+            <div><label for="f-preis">Preis [€]</label><input type="text" inputmode="decimal" id="f-preis" value="${p.preis == null ? "" : ML.fix(p.preis, 2).replace(/\./g, "")}"></div>
+            <div><label for="f-peinh">je</label><input type="text" id="f-peinh" value="${esc(p.preisEinh || "")}" list="v-einh"></div>
+          </div>
+          <label for="f-art">Artikelnummer</label><input type="text" id="f-art" value="${esc(p.artNr || "")}">
+          <label for="f-bem">Bemerkung</label><input type="text" id="f-bem" value="${esc(p.bem || "")}" placeholder="z. B. gehobelt, imprägniert, Farbe …">
+          <div data-nur="holz lfm" class="zwei">
+            <div><label for="f-fb">Fertigmaß Breite [cm]</label><input type="text" inputmode="decimal" id="f-fb" value="${z(p.fb)}"></div>
+            <div><label for="f-fh">Höhe [cm]</label><input type="text" inputmode="decimal" id="f-fh" value="${z(p.fh)}"></div>
+          </div>
+        </details>
+      </div>
+      <p class="fehlertext" id="fehlertext"></p>
+      <div class="knoepfe dialog-knoepfe">
+        ${neu ? "" : '<button type="button" class="knopf rot" id="f-weg">Löschen</button>'}
+        <span style="flex:1"></span>
+        <button type="button" class="knopf" id="f-abbrechen">Abbrechen</button>
+        <button type="submit" class="knopf voll" id="f-ok">Speichern</button>
+      </div>
+      ${liste("v-bez", [])}${liste("v-mat", [])}${liste("v-einh", VORSCHLAEGE.EINH_ALLE)}${liste("v-pack", VORSCHLAEGE.EINH_PACKUNGEN)}
+    </form>`;
+  document.body.appendChild(dlg);
+  const f = id => dlg.querySelector("#" + id);
+  const typ = () => f("f-typ").value;
+
+  function sichtbar() {
+    const t = typ();
+    dlg.querySelectorAll("[data-nur]").forEach(x => { x.hidden = !x.dataset.nur.split(" ").includes(t); });
+    dlg.querySelectorAll("[data-nicht]").forEach(x => { x.hidden = x.dataset.nicht === t; });
+    const platte = t === ML.PLATTE, mat = t === ML.MATERIAL;
+    f("l-bez").textContent = t === ML.TITEL ? "Überschrift (z. B. Dachstuhl, Dämmung, Decke EG)" : "Was? (Bezeichnung)";
+    const bez = platte ? VORSCHLAEGE.BEZ_PLATTE : mat ? VORSCHLAEGE.BEZ_MATERIAL : t === ML.LFM ? VORSCHLAEGE.BEZ_LFM : VORSCHLAEGE.BEZ_HOLZ;
+    f("v-bez").innerHTML = t === ML.TITEL ? "" : bez.map(x => `<option value="${esc(x)}">`).join("");
+    f("f-bez").placeholder = t === ML.TITEL ? "z. B. Dachstuhl" : "z. B. " + bez[0];
+    f("l-mat").textContent = platte ? "Plattenmaterial" : mat ? "Produkt / Material" : "Holzart / Qualität";
+    const mats = [...new Set([...bekannt, ...(platte ? VORSCHLAEGE.PLATTEN : mat ? VORSCHLAEGE.MATERIALIEN : VORSCHLAEGE.HOLZARTEN)])];
+    f("v-mat").innerHTML = mats.map(x => `<option value="${esc(x)}">`).join("");
+    f("f-mat").placeholder = platte ? "z. B. OSB/3" : mat ? "z. B. Mineralwolle 140 mm" : "z. B. KVH NSi C24";
+    vorschau();
+  }
+
+  /** Liest die Felder der gewählten Art (wie PositionDialog.lesen in der App); falsche Zahlen → {fehler: Feld}. */
+  function lesen() {
+    const t = typ();
+    const x = { typ: t, bez: f("f-bez").value.trim() };
+    if (t === ML.TITEL) { x.holzart = ""; x.bem = ""; return { x }; }
+    const felder = { holz: ["f-stk", "f-l", "f-b", "f-h", "f-fb", "f-fh"], lfm: ["f-lfm", "f-b", "f-h", "f-fb", "f-fh"],
+      platte: ["f-flL", "f-flB", "f-fl", "f-vs", "f-pl", "f-pb", "f-pd"], material: ["f-menge", "f-mvs", "f-pack"] }[t].concat(["f-preis"]);
+    const w = {};
+    for (const id of felder) {
+      const v = zahl(f(id).value);
+      if (Number.isNaN(v)) return { fehler: id };
+      w[id] = v;
+    }
+    const setze = (k, v) => { if (v != null) x[k] = v; };
+    x.holzart = f("f-mat").value.trim();
+    x.bem = f("f-bem").value.trim();
+    if (t === ML.HOLZ || t === ML.LFM) {
+      if (t === ML.HOLZ) { setze("stk", w["f-stk"]); setze("l", w["f-l"]); }
+      if (t === ML.LFM) setze("lfm", w["f-lfm"]);
+      setze("b", w["f-b"]); setze("h", w["f-h"]); setze("fb", w["f-fb"]); setze("fh", w["f-fh"]);
+    } else if (t === ML.PLATTE) {
+      setze("l", w["f-pl"] == null ? null : w["f-pl"] / 100); setze("b", w["f-pb"]); setze("h", w["f-pd"] == null ? null : w["f-pd"] / 10);
+      setze("fl", w["f-fl"]); setze("flL", w["f-flL"]); setze("flB", w["f-flB"]); setze("vs", w["f-vs"]);
+    } else if (t === ML.MATERIAL) {
+      setze("menge", w["f-menge"]);
+      x.einh = leer(f("f-einh").value) ? "Stk" : ML.norm(f("f-einh").value);
+      setze("vs", w["f-mvs"]); setze("pack", w["f-pack"]);
+      if (!leer(f("f-packname").value)) x.packName = f("f-packname").value.trim();
+    }
+    setze("preis", w["f-preis"]);
+    if (!leer(f("f-peinh").value)) x.preisEinh = f("f-peinh").value.trim();
+    if (!leer(f("f-art").value)) x.artNr = f("f-art").value.trim();
+    return { x };
+  }
+
+  /** Ergebnis-Zeile wie in der App („→ Du brauchst 74 Platten“). */
+  function vorschau() {
+    const e = f("ergebnis");
+    const r = lesen();
+    if (r.fehler || typ() === ML.TITEL) { e.textContent = ""; return; }
+    const t = r.x;
+    const zeilen = [];
+    if (t.typ === ML.PLATTE) {
+      const fl = ML.flaeche(t), vsp = t.vs || 0, n = ML.plattenAnzahl(t);
+      zeilen.push(ML.fix(fl, 2) + " m²" + (vsp ? " + " + ML.num(vsp) + " % = " + ML.fix(fl * (1 + vsp / 100), 2) + " m²" : ""));
+      if (n != null) zeilen.push("→ Du brauchst " + ML.fix(n, 0) + (n === 1 ? " Platte" : " Platten"));
+      else zeilen.push(fl > 0 ? "Plattengröße eingeben → Anzahl wird berechnet" : "Fläche eingeben: Länge × Breite oder m²");
+    } else if (t.typ === ML.MATERIAL) {
+      const bed = ML.bedarf(t);
+      if (bed == null) zeilen.push("Menge eingeben");
+      else {
+        const einh = ML.norm(t.einh);
+        zeilen.push((t.vs ? ML.mengeText(t.menge) + " " + einh + " + " + ML.num(t.vs) + " % = " : "") + ML.mengeText(bed) + " " + einh);
+        const pk = ML.packungen(t);
+        if (pk != null) zeilen.push("→ Du brauchst " + ML.num(pk) + " " + (t.packName || "Packung") + " à " + ML.mengeText(t.pack) + " " + einh);
+      }
+    } else {
+      zeilen.push("= " + ML.fix(ML.laufmeter(t), 2) + " m  ·  " + ML.fix(ML.volumen(t), 3) + " m³");
+    }
+    if (t.preis != null) {
+      const bt = ML.betrag(t);
+      zeilen.push(bt != null ? "Preis: " + ML.euro(bt) : "Preis: Einheit „" + ML.preisEinheit(t) + "“ passt nicht zur Menge");
+    }
+    f("f-peinh").placeholder = ML.preisEinheit(t) || "Einheit";
+    e.textContent = zeilen.join("\n");
+  }
+
+  const zu = () => { dlg.close(); dlg.remove(); };
+  f("f-typ").onchange = sichtbar;
+  dlg.addEventListener("input", vorschau);
+  f("f-abbrechen").onclick = zu;
+  dlg.addEventListener("cancel", e => { e.preventDefault(); zu(); });
+  if (!neu) f("f-weg").onclick = () => {
+    if (!confirm("„" + (vorlage.bez || vorlage.holzart || "Position") + "“ löschen?")) return;
+    zu();
+    aendern(b, n => {
+      const j = findePosition(n.positionen || [], vorlage, index);
+      if (j < 0) return false;
+      n.positionen.splice(j, 1);
+    }, "Gelöscht");
+  };
+  dlg.querySelector("form").onsubmit = e => {
+    e.preventDefault();
+    dlg.querySelectorAll(".falsch").forEach(x => x.classList.remove("falsch"));
+    const r = lesen();
+    if (r.fehler) {
+      f(r.fehler).classList.add("falsch");
+      if (r.fehler === "f-preis") f("mehr").open = true;
+      f(r.fehler).focus();
+      f("fehlertext").textContent = "Bitte eine gültige Zahl eingeben (z. B. 7,5).";
+      return;
+    }
+    if (r.x.typ === ML.TITEL && !r.x.bez) { f("fehlertext").textContent = "Bitte eine Überschrift eingeben."; f("f-bez").focus(); return; }
+    zu();
+    aendern(b, n => {
+      const l = n.positionen = n.positionen || [];
+      if (neu) { l.push(r.x); return; }
+      const j = findePosition(l, vorlage, index);
+      if (j < 0) return false;
+      l[j] = r.x;
+    }, neu ? "Hinzugefügt" : "Geändert");
+  };
+  sichtbar();
+  dlg.showModal();
+  f("f-bez").focus();
 }
 
 function csv(d) {
