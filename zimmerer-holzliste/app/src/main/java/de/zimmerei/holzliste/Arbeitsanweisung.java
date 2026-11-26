@@ -182,6 +182,12 @@ public final class Arbeitsanweisung {
 
     /** Kopfdaten: „Bauvorhaben: …“, „Kunde: …“, Anschrift „Frau / Herrn …“. */
     private static void kopfdaten(List<String> zeilen, Ergebnis erg) {
+        // Auf Folgeseiten steht der Kunde direkt vor „Arbeitsanweisung : 26-09999-AW Seite 2“
+        for (int i = 1; i < zeilen.size() && erg.kunde.isEmpty(); i++) {
+            if (!zeilen.get(i).matches("(?i)^(arbeitsanweisung|auftragsbestätigung|angebot)\\s*:\\s*\\S+.*\\bseite\\s*:?\\s*\\d+\\s*$")) continue;
+            String n = zeilen.get(i - 1).trim();
+            if (!FUSS.matcher(n).find() && !n.matches(".*\\d.*") && woerter(n) <= 6 && n.length() >= 3) erg.kunde = n;
+        }
         for (int i = 0; i < zeilen.size(); i++) {
             String z = zeilen.get(i);
             Matcher k = KOPF.matcher(z);
@@ -279,6 +285,17 @@ public final class Arbeitsanweisung {
     }
 
     /** Text in saubere Zeilen zerlegen (Silbentrennung zusammenfügen, Ligaturen ersetzen). */
+    // „B3.e1darf“: Großbuchstabe, „3.“, Kleinbuchstabe, „1“, Rest des Wortes
+    private static final Pattern VERSCHRAENKT = Pattern.compile("^(\\p{Lu})(\\d{1,2}\\.)(\\p{Ll})(\\d{1,4})(\\p{Ll}+)(?=\\s|$)");
+    static final String BEDARF = "\u27E6Bedarf\u27E7", ALTERNATIVE = "\u27E6Alternative\u27E7";
+
+    /** „3.1“, „1,00 m² Sparschalung,“ → „3.1 1,00 m² ⟦Bedarf⟧ Sparschalung,“ (Vermerk hinter Menge und Einheit). */
+    private static String markieren(String nr, String rest, String vermerk) {
+        Matcher m = Pattern.compile("^(\\d{1,3}(?:\\.\\d{3})*,\\d{1,3}(?:\\s+[\\p{L}²³][\\p{L}²³./]{0,11})?)(?:\\s+(.*))?$").matcher(rest);
+        if (!m.matches()) return nr + " " + rest;
+        return nr + " " + m.group(1) + " " + vermerk + (m.group(2) == null ? "" : " " + m.group(2));
+    }
+
     static List<String> zeilen(String text) {
         String t = text == null ? "" : text.replace('\u00A0', ' ').replace("\uFB01", "fi").replace("\uFB02", "fl")
                 .replace("\u00AD", "").replace('\t', ' ').replace("\r", "")
@@ -294,7 +311,18 @@ public final class Arbeitsanweisung {
             z = z.replaceAll("(\\s+-?\\d{1,3}(?:\\.\\d{3})*,\\d{2}\\s*€)+(\\s+E\\.P\\.)?\\s*$", "").replaceAll("\\s+E\\.P\\.$", "").trim();
             // „Bedarf“ (Bedarfsposition) steht vor oder nach der Menge – nur ein Vermerk
             if (z.equalsIgnoreCase("Bedarf")) continue;
-            z = z.replaceFirst("^(?i)bedarf\\s+(?=\\d)", "");
+            // Übereinander gedruckt: „B3.e1darf 1,00 m² …“ = „Bedarf“ + „3.1“, „A1.l5ternative 1 1,00 …“ = „Alternative 1“ + „1.5“
+            Matcher v = VERSCHRAENKT.matcher(z);
+            if (v.find()) {
+                String wort = (v.group(1) + v.group(3) + v.group(5)).toLowerCase(Locale.GERMANY);
+                String rest = z.substring(v.end()).trim();
+                if (wort.startsWith("alternativ")) rest = rest.replaceFirst("^\\d{1,2}\\s+(?=\\d)", "");
+                if (wort.equals("bedarf")) z = markieren(v.group(2) + v.group(4), rest, BEDARF);
+                else if (wort.startsWith("alternativ")) z = markieren(v.group(2) + v.group(4), rest, ALTERNATIVE);
+            } else if (z.matches("(?i)^bedarf\\s+\\d.*")) {
+                Matcher b = Pattern.compile("^(?i)bedarf\\s+(\\d{1,2}(?:\\.\\d{1,4}){0,3})\\s+(.*)$").matcher(z);
+                z = b.matches() ? markieren(b.group(1), b.group(2), BEDARF) : z.replaceFirst("^(?i)bedarf\\s+(?=\\d)", "");
+            }
             if (!z.isEmpty()) out.add(z);
         }
         return out;
@@ -399,15 +427,15 @@ public final class Arbeitsanweisung {
     // auch einfache Nummern „1 1,00 Stück …“ (Arbeitsanweisungen ohne Titel-Gliederung) – zählt nur mit Menge dahinter
     private static final Pattern LV_POS = Pattern.compile("^(\\d{1,2}(?:\\.\\d{1,4}){0,3})(?=\\s|$)\\s*(.*)$");
     // „20,00 LFM …“, „1,00 psch“, „2,50 Liter …“, „1,00“
-    private static final Pattern LV_MENGE = Pattern.compile("^(\\d{1,3}(?:\\.\\d{3})*,\\d{1,3})(?:\\s+([\\p{L}²³][\\p{L}²³.]{0,11}))?(?:\\s+(.*))?$");
+    private static final Pattern LV_MENGE = Pattern.compile("^(\\d{1,3}(?:\\.\\d{3})*,\\d{1,3})(?:\\s+([\\p{L}²³][\\p{L}²³./]{0,11}))?(?:\\s+(.*))?$");
     private static final Pattern LV_TITEL = Pattern.compile("^(\\d{1,2})(?:\\s+(\\p{L}.{2,60}))?$");
     // 120x120x5000 mm, 26x142x5100, 60/200 mm
     private static final Pattern MASSE3 = Pattern.compile("(?<![\\d,.])(\\d{1,4}(?:,\\d)?)\\s*[x×*/]\\s*(\\d{1,4}(?:,\\d)?)(?:\\s*[x×*/]\\s*(\\d{3,5}))?\\s*(mm|cm)?");
     // Einheiten / Texte, die kein Material sind
-    private static final Pattern LOHN_EINHEIT = Pattern.compile("(?i)^(h|std|std\\.|stunden?|psch|pausch|pauschal|tag|tage|km|wo|woche|monat|ls)$");
-    private static final Pattern LOHN_TEXT = Pattern.compile("stundensatz|stundenlohn|anfahrt|baustelleneinrichtung|gerüst|geruest|entsorg|demontage|"
-            + "materialkostenschätzung|kostenschätzung|regie|zulage|psa\\b|schutzausrüstung|schützausrüstung|wartung|abbund|"
-            + "dachdeckerlift|\\blift\\b|toilette|container|mulde|einsatz für pauschale|abbruch|rückbau|aufmaß|planung|statik|transport|kranstunde|hebebühne|vorhalte");
+    private static final Pattern LOHN_EINHEIT = Pattern.compile("(?i)^(h|std|std\\.|stunden?|psch|pausch|pauschal|tag|tage|km|wo|woche|wochen|monat|ls|stwo|m/wo|m²/wo)$");
+    private static final Pattern LOHN_TEXT = Pattern.compile("stundensatz|stundenlohn|anfahrt|baustelleneinrichtung|"
+            + "materialkostenschätzung|kostenschätzung|regie|psa\\b|schutzausrüstung|schützausrüstung|wartung|abbund|"
+            + "einsatz für pauschale|aufmaß|planung|statik|kranstunde");
 
     /** Briefkopf, Fußzeile, Bankdaten, Unterschriftsfeld – nie Aufgabe oder Material. */
     static final Pattern FUSS = Pattern.compile("(?i)(\\biban\\b|\\bbic\\b|swift|\\bblz\\b|\\bkto\\b|ust-?id|steuer-?nr|\\bhrb\\b|registergericht|finanzamt|"
@@ -421,7 +449,8 @@ public final class Arbeitsanweisung {
             + "abdicht|erneuer|befestig|kontroll|säuber|entfern|anbring|verleg|ausbesser|streich|schneid|abkleb|repar|aufbau|abbau|räum|ersetz|"
             + "ergänz|freischneid|schließ|beseitig|aufnehm|verschraub|nachziehen|lackier|ölen|imprägnier|spachtel|aufmaß nehmen)");
 
-    private static final Pattern KEINE_AUFGABE = Pattern.compile("stundensatz|stundenlohn|anfahrt|kostenschätzung|regiestunde|regiearbeit");
+    private static final Pattern KEINE_AUFGABE = Pattern.compile("stundensatz|stundenlohn|anfahrt|kostenschätzung|regiestunde|regiearbeit|"
+            + "gebrauchsüberlassung|verlängerungsmiete|brennstoffemission");
 
     static boolean istLeistungsverzeichnis(List<String> zeilen) {
         int n = 0;
@@ -456,7 +485,8 @@ public final class Arbeitsanweisung {
                 }
                 int nrTitel = Integer.parseInt(t.group(1));
                 // „3 x gekantet …“ oder „6 bar“ in einer Beschreibung sind keine Kapitel: Kapitel zählen hoch
-                if (titel != null && (nrTitel < letzteTitelNr || (nrTitel == letzteTitelNr && !inBeschreibung) || nrTitel > letzteTitelNr + 2 || !Character.isUpperCase(titel.charAt(0)))) {
+                if (titel != null && (nrTitel < letzteTitelNr || (nrTitel == letzteTitelNr && !inBeschreibung) || nrTitel > letzteTitelNr + 2 || !Character.isUpperCase(titel.charAt(0))
+                        || (t.group(2) != null && titel.matches(".*[\\d,].*")))) {
                     if (t.group(2) == null) i--; // nächste Zeile normal weiter auswerten
                     titel = null;
                 }
@@ -507,21 +537,25 @@ public final class Arbeitsanweisung {
         if (i + 1 < zeilen.size() && zeilen.get(i + 1).length() <= 40 && zeilen.get(i + 1).matches("^\\d{1,4}\\s*[x×*/]\\s*\\d.*"))
             text = text + " " + zeilen.get(++i);
         // Umbrochene Bezeichnung („Konstruktionsvollholz, nicht / keilgezinkt …“, „Brettschichtholz GL24, Fichte/ …“)
-        for (int k = 0; k < 2 && i + 1 < zeilen.size(); k++) {
+        for (int k = 0; k < 4 && i + 1 < zeilen.size(); k++) {
             String n = zeilen.get(i + 1);
             if (LV_POS.matcher(n).matches() || FUSS.matcher(n).find() || HINWEIS.matcher(n).find() || n.length() > 60) break;
-            if (!(text.matches(".*[,/\\-]$") || text.matches("(?i).*\\b(nicht|und|mit|aus|für)$") || Character.isLowerCase(n.charAt(0)))) break;
+            if (!(OFFEN.matcher(text).find() || Character.isLowerCase(n.charAt(0)))) break;
             text = text + (text.endsWith("/") || text.endsWith("-") ? "" : " ") + n;
             i++;
         }
+        boolean bedarf = text.contains(BEDARF), alternative = text.contains(ALTERNATIVE);
+        text = text.replace(BEDARF, "").replace(ALTERNATIVE, "").replaceAll("\\s{2,}", " ").trim();
         text = text.replaceAll("(?i),\\s*standard$", "").replaceAll("[,;]+$", "").trim();
         String tk = text.toLowerCase(Locale.GERMANY);
         boolean lohn = LOHN_EINHEIT.matcher(einheit).matches() || LOHN_TEXT.matcher(tk).find() || text.length() < 3;
-        // Materialposition: die Beschreibung darunter (Langtext) sagt, was zu tun ist – sie wird die Aufgabe
-        String langtext = "";
+        // Arbeit ohne Material zum Bestellen („Dachlattung entfernen“, „Verwertung von Holz“, „Zuschlag für …“)
+        boolean nurArbeit = lohn || alternative || GERAET.matcher(tk).find() || (NUR_ARBEIT.matcher(tk).find() && !tk.contains("liefer"));
+        // Beschreibung darunter (Langtext): sagt, was zu tun ist – sie wird die Aufgabe
+        String[] lang = {"", ""};
         if (!lohn) {
             int[] ende = {i};
-            langtext = langtext(zeilen, ende);
+            lang = langtext(zeilen, ende);
             i = ende[0];
         }
         // To-do: jede Position außer Stundensätzen, Anfahrt und Kostenschätzungen
@@ -529,8 +563,16 @@ public final class Arbeitsanweisung {
             String e = Einheit.norm(einheit);
             if (e.equalsIgnoreCase("psch") || e.equalsIgnoreCase("pausch") || e.equalsIgnoreCase("pauschal")) e = "pauschal";
             String info = "Pos. " + nr + (menge == null ? "" : " · " + ("pauschal".equals(e) ? e : Fmt.mengeText(menge) + (e.isEmpty() ? "" : " " + e)));
-            if (!langtext.isEmpty()) info += " · " + kurz(text);
-            erg.aufgaben.add(new Aufgabe(akt == null ? "" : akt.titel, langtext.isEmpty() ? text : langtext, info));
+            String aufgabe = aufgabeText(text, lang[0]).replaceAll("[.;,]+$", "").trim();
+            if (!aufgabe.equals(text) && !aufgabe.startsWith(text)) info += " · " + kurz(text);
+            if (bedarf) info += " · Bedarfsposition";
+            if (alternative) info += " · Alternativposition";
+            if (!lang[1].isEmpty()) aufgabe += "\n" + lang[1];
+            erg.aufgaben.add(new Aufgabe(akt == null ? "" : akt.titel, aufgabe, info));
+        }
+        if (nurArbeit && !lohn) {
+            erg.uebersprungen++;
+            return i;
         }
         if (lohn) {
             erg.uebersprungen++;
@@ -550,60 +592,136 @@ public final class Arbeitsanweisung {
     // Kopf einer Folgeseite mitten in einer Position („Pos. Menge Einh. Beschreibung“, „Seite :2“ …) – überspringen
     private static final Pattern SEITENKOPF = Pattern.compile("(?i)^(pos\\.?\\s+menge|arbeitsanweisung$|bauvorhaben\\s*:|übertrag|.*\\bseite\\s*:?\\s*\\d+\\s*$)");
     // Zeilen, die keine Beschreibung sind: nur Maße („120x120x5000 mm“), nur Preise, „Bedarf“
+    // „Holzart : Fichte / Tanne“, „Befestigung:bis zu 6 x 140 …“, „Brettabstand : .....“
+    private static final Pattern ANGABE = Pattern.compile("^(\\p{L}[\\p{L} ./()\\-]{1,40}?)\\s*:\\s*(.*)$");
+    private static final Pattern AVV = Pattern.compile("(?i)\\bavv\\s*\\d{6}");
+    // Satz geht in der nächsten Zeile weiter: endet mit Komma/Bindestrich oder Artikel/Präposition
+    static final Pattern OFFEN = Pattern.compile("(?i)([,/\\-]|\\b(und|oder|mit|aus|für|der|die|das|den|dem|des|ein|eine|einer|eines|einem|einen|in|im|an|am|auf|"
+            + "als|zur|zum|von|vom|bei|unter|über|zu|sowie|bis|gegen|nach|vor|inkl\\.?|einschl\\.?|incl\\.?|liefern|nicht)"
+            + "|\\b\\p{Ll}{2,6}\\.)\\s*$"); // auch Abkürzungen: „mit verz.“, „aus farb. besch.“
+    // Arbeit ohne Material zum Bestellen
+    private static final Pattern NUR_ARBEIT = Pattern.compile("entfern|demontier|abbruch|abbrechen|abreiß|abreis|rückbau|verwertung|entsorg|zuschlag|"
+            + "zulage|abgabe|aufmaß|einfalz|erstellen|herstellen|gebrauchsüberlassung|vorhalt|miete\\b|verlängerung|demontage|transport");
+    // Baustellen- und Mietgeräte: nie Material, auch wenn „liefern und aufbauen“ dabeisteht
+    private static final Pattern GERAET = Pattern.compile("gerüst|geruest|dachdeckerlift|\\blift\\b|toilette|container|mulde|turmdrehkran|"
+            + "\\bkran\\b|hebebühne|baustromverteiler|verteiler-schrank|absturzsicherung|schutznetz|treppenturm");
     private static final Pattern KEIN_LANGTEXT = Pattern.compile("(?i)^(\\d{1,4}\\s*[x×*/]\\s*\\d.*|[\\d.,\\s€]+|bedarf|nach bedarf)$");
 
     /**
-     * Beschreibung (Langtext) unter einer Materialposition, zu einem Text zusammengefügt. ende[0]: in = Index der
-     * Positionszeile, out = letzte gelesene Zeile. Leer, wenn die Position keine Beschreibung hat.
+     * Beschreibung (Langtext) unter einer Position. ende[0]: in = Index der Positionszeile, out = letzte gelesene Zeile.
+     * Liefert {Sätze, Angaben}: Sätze zusammengefügt; Angaben wie „Holzart : Fichte“ (nur mit Wert, ohne Platzhalter
+     * „.....“) mit „ · “ verbunden. Seitenwechsel (Bankdaten, Kunde, „Seite 2“, „Pos. Menge“, „Übertrag“) werden übersprungen.
      */
-    private static String langtext(List<String> zeilen, int[] ende) {
+    private static String[] langtext(List<String> zeilen, int[] ende) {
         int i = ende[0];
         StringBuilder sb = new StringBuilder();
+        List<String> angaben = new ArrayList<>();
         boolean hinweisLaeuft = false;
         while (i + 1 < zeilen.size()) {
             String z = zeilen.get(i + 1).trim();
-            Matcher p = LV_POS.matcher(z);
-            if (p.matches() && (LV_MENGE.matcher(p.group(2).trim()).matches() || p.group(2).trim().isEmpty())) break;
-            Matcher t = LV_TITEL.matcher(z);
-            if (t.matches() && (t.group(2) == null || Character.isUpperCase(t.group(2).charAt(0)))) break;
-            if (SEITENKOPF.matcher(z).find()) { i++; continue; } // Kopf einer Folgeseite
-            if (FUSS.matcher(z).find() && !seitenkopfFolgt(zeilen, i + 2)) break; // Briefkopf einer Folgeseite: weiterlesen
+            if (positionOderKapitel(z)) break;
+            int sw = seitenwechselEnde(zeilen, i + 1);
+            if (sw >= 0) { i = sw; continue; }
+            if (FUSS.matcher(z).find()) break;
             i++;
-            if (FUSS.matcher(z).find()) continue;
             boolean endetMitPunkt = z.endsWith(".");
             if (hinweisLaeuft || HINWEIS.matcher(z).find()) { hinweisLaeuft = !endetMitPunkt; continue; }
-            if (KEIN_LANGTEXT.matcher(z).matches() || woerter(z) < 2) continue;
+            if (KEIN_LANGTEXT.matcher(z).matches() || z.contains("€") || AVV.matcher(z).find()) continue;
+            Matcher a = ANGABE.matcher(z);
+            if (a.matches()) {
+                String wert = a.group(2).trim();
+                if (!wert.isEmpty() && !wert.matches(".*\\.{3,}.*") && angaben.size() < 4) angaben.add(a.group(1).trim() + ": " + wert);
+                continue;
+            }
+            if (woerter(z) < 2 && sb.length() == 0) continue; // „Standard“, „Ausstattung“ allein
             sb.append(sb.length() > 0 ? " " : "").append(z);
         }
         ende[0] = i;
-        String l = sb.toString().replaceAll("\\s{2,}", " ").replaceAll("[.;,]+$", "").trim();
+        String l = sb.toString().replaceAll("\\s{2,}", " ").replaceAll("\\.{2,}$", ".").replaceAll("[;,]+$", "").replaceAll("\\.$", "").trim();
         if (l.length() > 300) l = l.substring(0, 297).trim() + "…";
-        return l;
+        return new String[]{l, String.join(" · ", angaben)};
     }
 
-    /** Folgt in den nächsten Zeilen ein Seitenkopf („Arbeitsanweisung“, „Bauvorhaben :“, „Pos. Menge …“)? */
-    private static boolean seitenkopfFolgt(List<String> zeilen, int ab) {
-        for (int k = ab; k < Math.min(zeilen.size(), ab + 4); k++) if (SEITENKOPF.matcher(zeilen.get(k).trim()).find()) return true;
-        return false;
+    /** Neue Position mit Menge oder Kapitelnummer: hier endet eine Beschreibung. */
+    private static boolean positionOderKapitel(String z) {
+        Matcher p = LV_POS.matcher(z);
+        if (p.matches() && (LV_MENGE.matcher(p.group(2).trim()).matches() || p.group(2).trim().isEmpty())) return true;
+        Matcher t = LV_TITEL.matcher(z);
+        return t.matches() && t.group(2) == null;
     }
 
-    /** Zeilen unter einer Arbeitsposition als einzelne Aufgaben; Folgezeilen in Kleinschrift hängen am vorigen Punkt. */
+    /**
+     * Beginnt bei Zeile i ein Seitenwechsel (Fußzeile mit Bankdaten, Kundenname, „Arbeitsanweisung : … Seite 2“,
+     * „Pos. Menge Einh. Beschreibung“, „Übertrag“)? Dann Index seiner letzten Zeile, sonst -1.
+     */
+    static int seitenwechselEnde(List<String> zeilen, int i) {
+        if (i >= zeilen.size()) return -1;
+        String z = zeilen.get(i).trim();
+        if (!FUSS.matcher(z).find() && !SEITENKOPF.matcher(z).find()) return -1;
+        int letzterKopf = -1;
+        for (int k = i; k < Math.min(zeilen.size(), i + 16); k++) {
+            if (SEITENKOPF.matcher(zeilen.get(k).trim()).find()) { letzterKopf = k; continue; }
+            if (letzterKopf >= 0) break; // Kopf vorbei – hier geht der Inhalt weiter
+        }
+        return letzterKopf;
+    }
+
+    /**
+     * Text der Aufgabe aus Kurztext und Beschreibung: Ist beides ein umbrochener Satz („Eindecken der Dachfläche mit …
+     * 0,5 mm“ / „dick, Bandbreite 67 cm …“), wird zusammengefügt; sonst zählt die Beschreibung (der Kurztext steht in der Info).
+     */
+    static String aufgabeText(String kurz, String saetze) {
+        if (saetze.isEmpty()) return kurz;
+        String kk = kurz.toLowerCase(Locale.GERMANY);
+        if (kk.matches("^(verwertung|entsorgung|abgabe)\\b.*")) return kurz; // Entsorgung: Analysewerte gehören nicht in die Aufgabe
+        boolean kurzOffen = OFFEN.matcher(kurz).find();
+        if (woerter(saetze) < 4 && !kurzOffen) return kurz + " (" + saetze + ")"; // „PAK >1000mg/kg“
+        if (kurzOffen || !Character.isUpperCase(saetze.charAt(0))) return kurz + " " + saetze;
+        boolean kurzTut = TAETIGKEIT.matcher(kurz).find() || NUR_ARBEIT.matcher(kk).find() || kk.contains("liefer");
+        boolean langTut = TAETIGKEIT.matcher(saetze).find();
+        // ein umbrochener Satz: „Bogen 72° aus Aluminium“ / „Durchmesser 100 mm … einbauen“ (Fortsetzung mit Maßangabe)
+        boolean einSatz = !saetze.matches(".*\\.\\s+\\p{Lu}.*") && woerter(saetze) <= 20;
+        if (!kurzTut && langTut && einSatz && saetze.matches("^\\p{L}+\\s+\\d.*")) return kurz + " " + saetze;
+        // Kurztext sagt schon, was zu tun ist; darunter nur technische Daten („Traufhöhe bis 6,00 m, Tragfähigkeit …“)
+        if (kurzTut && !langTut) return kurz;
+        return saetze;
+    }
+
+    private static String erstesWort(String s) {
+        String[] w = s.trim().split("[\\s,;.]+", 2);
+        return w.length == 0 ? "" : w[0];
+    }
+
+    /**
+     * Zeilen unter einer Arbeitsposition als einzelne Aufgaben. Umbrochene Sätze werden zusammengefügt (Folgezeile klein
+     * oder vorige Zeile offen, z. B. „Dachöffnung herstellen, Wechselholz und“ / „Streichsparren liefern …“).
+     */
     private static int beschreibungAlsAufgaben(String nr, List<String> zeilen, int i, Ergebnis erg, Abschnitt akt) {
         String abschnitt = akt == null ? "" : akt.titel;
         Aufgabe letzte = null;
+        String vorige = "";
         boolean hinweisLaeuft = false; // mehrzeiliger Hinweis („Verwendung von PSA nach / eigenem Ermessen …“)
         while (i + 1 < zeilen.size()) {
             String z = zeilen.get(i + 1);
-            Matcher p = LV_POS.matcher(z);
-            if (p.matches() && (LV_MENGE.matcher(p.group(2).trim()).matches() || p.group(2).trim().isEmpty())) break;
-            if (LV_TITEL.matcher(z).matches() || FUSS.matcher(z).find()) break;
+            if (positionOderKapitel(z.trim())) break;
+            Matcher tt = LV_TITEL.matcher(z);
+            if (tt.matches() && Character.isUpperCase(tt.group(2).charAt(0)) && !tt.group(2).matches(".*[\\d,].*")) break;
+            int sw = seitenwechselEnde(zeilen, i + 1);
+            if (sw >= 0) { i = sw; continue; }
+            if (FUSS.matcher(z).find()) break;
             i++;
             boolean endetMitPunkt = z.trim().endsWith(".");
-            if (hinweisLaeuft || HINWEIS.matcher(z).find() || z.length() > 120) { letzte = null; hinweisLaeuft = !endetMitPunkt; continue; }
+            if (hinweisLaeuft || HINWEIS.matcher(z).find() || z.length() > 120) { letzte = null; hinweisLaeuft = !endetMitPunkt; vorige = ""; continue; }
+            if (ANGABE.matcher(z.trim()).matches() || z.contains("€") || AVV.matcher(z).find()) { letzte = null; vorige = ""; continue; }
             String t = z.replaceAll("[.;,]+$", "").trim();
-            if (t.length() < 3) continue;
-            if (Character.isLowerCase(t.charAt(0))) { if (letzte != null) letzte.text = letzte.text + " " + t; continue; }
-            if (!Character.isLetter(t.charAt(0)) || woerter(t) < 2 || !TAETIGKEIT.matcher(t).find()) { letzte = null; continue; }
+            if (t.isEmpty()) continue;
+            // Fortsetzung: klein, vorige Zeile offen, nur ein Wort – oder ohne Tätigkeit, wenn die vorige Zeile nicht mit Punkt endet
+            boolean weiter = letzte != null && (Character.isLowerCase(t.charAt(0)) || OFFEN.matcher(vorige).find() || woerter(t) < 2
+                    || (!vorige.endsWith(".") && !TAETIGKEIT.matcher(t).find()));
+            vorige = z.trim();
+            if (weiter) { letzte.text = letzte.text + " " + t; continue; }
+            if (Character.isLowerCase(t.charAt(0))) continue; // Fortsetzung eines Satzes, der keine Aufgabe ist
+            if (t.length() < 3 || !Character.isLetter(t.charAt(0)) || woerter(t) < 2 || !TAETIGKEIT.matcher(t).find()) { letzte = null; continue; }
             letzte = new Aufgabe(abschnitt, t, "zu Pos. " + nr);
             erg.aufgaben.add(letzte);
         }

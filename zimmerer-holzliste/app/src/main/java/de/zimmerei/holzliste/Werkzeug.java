@@ -80,6 +80,8 @@ public class Werkzeug {
         }
     }
 
+    private static final Pattern ABBRUCH = Pattern.compile("entfern|abbruch|abbrech|demont|abreiß|abreis|rückbau|ausbau|entsorg");
+
     // Wortgrenze mit Umlauten (Android kennt UNICODE_CHARACTER_CLASS nicht)
     private static final String W = "[\\p{L}\\p{N}_]";
     private static final String GRENZE = "(?:(?<=" + W + ")(?!" + W + ")|(?<!" + W + ")(?=" + W + "))";
@@ -95,7 +97,7 @@ public class Werkzeug {
                     "Handkreissäge", "Kappsäge", "Zimmermannswinkel", "Schraubzwingen"),
             new Regel("latte|lattung|brett|schalung|rauhspund|rauspund|diele|terrasse|balkonbrett",
                     "Kappsäge", "Handkreissäge", "Schlagschnur"),
-            new Regel("\\bosb|dreischicht|sperrholz|multiplex|spanplatte|holzfaserplatte|unterdeckplatte|\\bdwd\\b|agepan",
+            new Regel("\\bosb|dreischichtplatte|dreischicht-platte|sperrholz|multiplex|spanplatte|holzfaserplatte|unterdeckplatte|\\bdwd\\b|agepan",
                     "Handkreissäge mit Führungsschiene", "Stichsäge", "Plattenheber"),
             new Regel("gipskarton|\\bgk[bfi]?\\b|rigips|fermacell|gipsfaser|trockenbau|\\b(cw|uw|cd|ud)\\b|ständerwerk",
                     "Gipskartonmesser", "Gipsraspel", "Plattenheber", "Blechschere", "Spachtel & Glätter"),
@@ -113,25 +115,34 @@ public class Werkzeug {
             new Regel("dübel|duebel|\\banker\\b|gewindestange|schwerlast|verankerung|bolzenanker",
                     "Bohrhammer", "Betonbohrer-Satz", "Ausblaspumpe", "Ratsche + Nüsse"),
             new Regel("injektion|verbundmörtel|vmz|\\bfis\\b", "Auspresspistole für Injektionsmörtel"),
-            new Regel("silikon|acryl|dichtstoff|kartusche|kleber|kleb(?!eband)", "Kartuschenpistole"),
+            new Regel("silikon|acryl|dichtstoff|kartusche|kleber|klebstoff", "Kartuschenpistole"), // nicht „abkleben“
             new Regel("bauschaum|montageschaum|pu-schaum", "Schaumpistole", "Schaumreiniger"),
-            new Regel("lasur|holzschutz|grundier|imprägnier|imprõgnier|anstrich|farbe|\\böl\\b|pullex",
+            new Regel("lasur|holzschutz|grundier|imprägnier|imprõgnier|anstrich|\\bstreichen\\b|lackier|\\böl\\b|pullex",
                     "Pinsel & Farbroller", "Rührholz", "Abdeckfolie", "Exzenterschleifer + Schleifpapier"),
-            new Regel("ziegel|dachstein|dachpfanne|eindeckung|first|grat",
+            // Ziegel/Dachsteine – nicht bei Blech-Eindeckungen („Eindecken … mit Edelstahlscharen“)
+            new Regel("ziegel|dachstein|dachpfanne|pfannen|biberschwanz|ortgangstein",
                     "Ziegelschneider / Trennschleifer", "Dachdeckerhammer", "Dachleiter", "Absturzsicherung (PSA)"),
-            new Regel("rinne|fallrohr|blech|verwahrung|attika|titanzink|\\bzink",
-                    "Blechschere", "Falzzange", "Lötkolben", "Nieter"),
+            new Regel("first|grat|eindeckung|eindecken", "Dachleiter", "Absturzsicherung (PSA)"),
+            new Regel("rinne|fallrohr|regenablauf|blech|verwahrung|attika|titanzink|\\bzink|aluminium|uginox|prefa",
+                    "Blechschere", "Falzzange", "Nieter"),
+            // Stehfalz-/Scharendeckung
+            new Regel("stehfalz|falz|scharen|scharblech|doppelfalz|winkelfalz",
+                    "Falzzange", "Falzschließer (Hand/Maschine)", "Blechschere", "Schnurschlag / Schlagschnur"),
+            // Löten nur bei lötbaren Blechen (nicht bei Aluminium)
+            new Regel("einlöt|verlöt|\\blöt|verzinnt|titanzink|kupfer|uginox", "Lötkolben", "Lötwasser & Lot"),
+            new Regel("einblas|zellulose", "Einblasmaschine + Schläuche", "Lochsäge für Einblasöffnungen"),
             new Regel("bitumen|schweißbahn|schweissbahn", "Gasbrenner", "Andrückroller", "Feuerlöscher"),
-            new Regel("mörtel|moertel|beton|estrich|zement|putz", "Mörteleimer", "Kelle", "Rührwerk"),
+            // nicht „Betondachstein“ oder „Trockenputz“
+            new Regel("mörtel|moertel|\\bbeton\\b|transportbeton|estrich|zement|\\bputz\\b|verputz", "Mörteleimer", "Kelle", "Rührwerk"),
             new Regel("dachfenster|velux|\\broto\\b|eindeckrahmen", "Keile & Unterlegplättchen", "Montageschaum + Schaumpistole"),
     };
 
     // Arbeitsschritte / Text aus der Arbeitsanweisung → Werkzeug
     private static final Regel[] ARBEIT = {
-            new Regel("demontage|demontier|abbruch|abbrechen|rückbau|zurückbauen|ausbauen",
+            new Regel("demontage|demontier|abbruch(?!abf)|abbrechen|rückbau|zurückbauen|ausbauen",
                     "Säbelsäge", "Kuhfuß / Brecheisen", "Schutzhandschuhe"),
             new Regel("entsorg", "Schuttsäcke", "Schubkarre"),
-            new Regel("abfangen|abstützen|stützen", "Baustützen", "Kanthölzer zum Unterlegen"),
+            new Regel("abfangen|abstützen|unterstellen", "Baustützen", "Kanthölzer zum Unterlegen"), // nicht Bauteil „Stützen“
             new Regel("gerüst|deckenmontage|über kopf|überkopf", "Fahrgerüst / Arbeitsgerüst"),
             new Regel("dach|first|traufe|sparren|höhe|absturz", "Leiter", "Absturzsicherung (PSA)"),
             new Regel("balkon|geländer", "Leiter", "Absperrband"),
@@ -139,10 +150,12 @@ public class Werkzeug {
             new Regel("fenster|tür|tuer", "Keile & Unterlegplättchen", "Montageschaum + Schaumpistole"),
             new Regel("schleif", "Exzenterschleifer + Schleifpapier"),
             new Regel("bohr|dübel|verankern", "Bohrhammer", "Betonbohrer-Satz"),
-            new Regel("sockel|beton|fundament", "Bohrhammer", "Mörteleimer", "Kelle"),
+            new Regel("sockel|\\bbeton\\b|fundament", "Bohrhammer", "Mörteleimer", "Kelle"),
             new Regel("abbund|abbinden|zapfen|blatt|kerve|klaue", "Kettenstemmer", "Abbundsäge", "Stemmeisen"),
-            new Regel("hobel", "Elektrohobel"),
-            new Regel("prüfen|überprüfen|ertüchtig|feuchte", "Feuchtemessgerät", "Taschenlampe"),
+            // „hobeln“ als Arbeit – nicht „ungehobelte Latten“ oder „gehobelt“ geliefertes Holz
+            new Regel("\\bhobeln\\b|abhobel|nachhobel|abrichten", "Elektrohobel"),
+            // nur als Arbeit („Holzfeuchte : trocken“ ist eine Angabe zum Material)
+            new Regel("prüfen|überprüfen|ertüchtig|feuchte messen|feuchtemessung", "Feuchtemessgerät", "Taschenlampe"),
     };
 
     /**
@@ -193,6 +206,10 @@ public class Werkzeug {
                 Matcher m = r.muster.matcher(k);
                 if (m.find()) for (String w : r.werkzeuge) add(out, vorhanden, w, "wegen „" + kurz(t) + "“", GELB);
             }
+            // Material im vollen Text (der Positionsname in der Materialliste ist gekürzt: „…Edelstahlscharen, Stehfalz“)
+            // – aber nicht bei Abbruch („Abbruch Bitumenbahn“ braucht keinen Gasbrenner)
+            if (!ABBRUCH.matcher(k).find())
+                for (Regel r : MATERIAL) if (r.muster.matcher(k).find()) for (String w : r.werkzeuge) add(out, vorhanden, w, "wegen „" + kurz(t) + "“", GELB);
         }
         if (erf != null) {
             // aus eurer Erfahrung: selbst dazugeschriebenes Werkzeug bei ähnlichen Baustellen

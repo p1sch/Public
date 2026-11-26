@@ -426,6 +426,168 @@ public class ArbeitsanweisungTest {
         assertTrue(w.toString(), w.contains("Bohrhammer"));
     }
 
+    // Nachbildung echter Arbeitsanweisungen (Aufbau und Eigenheiten wie aus der Auftrags-Software; Firma, Kunde,
+    // Bankdaten und Texte ausgedacht): Bankdaten-Fußzeile und Kunde vor „Arbeitsanweisung : … Seite 2“ beim
+    // Seitenwechsel, übereinander gedruckte „Bedarf“/„Alternative“ + Positionsnummer, Aufzählung im Baustrom,
+    // Angaben mit Platzhaltern, umbrochene Sätze, Abkürzungen am Zeilenende.
+    static final String FUSS_SEITE = String.join("\n",
+            "Musterbank Musterstadt Zimmerei Muster GmbH mit Sitz in Musterstadt.",
+            "BLZ: 10000000 Ust-ID-Nr. DE000000000, Steuer-Nr: 00000000000 bei Finanzamt",
+            "Kto: 1234567 Musterstadt.",
+            "IBAN: DE00 1000 0000 0001 2345 67 HRB 000000, Registergericht Musterstadt",
+            "Swift: MUSTDEF1XXX",
+            "Erika Beispiel",
+            "Arbeitsanweisung : 26-09999-AW Seite %d",
+            "Pos. Menge Einh. Beschreibung",
+            "  ",
+            "Übertrag:   0,00 €");
+    static final String WIE_ECHT = String.join("\n",
+            "Zimmerei Muster GmbH - Hauptstr. 1 - 12345 Musterstadt Zimmerei Muster GmbH",
+            "Erika Beispiel Hauptstr. 1",
+            "Beispielweg 7 12345 Musterstadt",
+            "Arbeitsanweisung",
+            "Projektnummer : 26-09999-P Kundennr. :  0 0000 Datum : 01.08.2026",
+            "Bauvorhaben : Beispielweg 7 BV Beispiel Seite : 1",
+            "Pos. Menge Einh. Beschreibung",
+            "1",
+            "Baustelleneinrichtung",
+            "1.1 1,00 psch Baustelleneinrichtung,",
+            "Standard",
+            "1.2 1,00 Monat Baustromverteiler",
+            "Anschluss-Verteiler-Schrank",
+            "Ausstattung:",
+            "1 Kabeleinführung mit Zugentlastung",
+            "2 CEE-Steckdosen 5/16 A, 400 V, 2 Automaten C 16",
+            "6 Schukosteckdosen 3/16 A, 230 V",
+            "1.3 1,00 Stück Beispiel Lift 250 Dachdeckerlift",
+            "liefern und aufbauen und abbauen",
+            "Traufhöhe bis 6,00 m",
+            "Hersteller: Beispiel",
+            "Tragfähigkeit bis 250kg, Hubgeschwindigkeit 30m/min",
+            "A1.l4ternative 1 1,00 StWo Beispiel Lift 250 Dachdeckerlift",
+            "Verlängerungsmiete",
+            "1.5 1,00 t Verwertung von Holz behandelt A2-A3",
+            "AVV 170201",
+            "2",
+            "Demontage",
+            "2.1 40,00 m² Dachlattung entfernen",
+            "Dachlattung entfernen und nach unten",
+            "abtransportieren, entsorgen in gesonderter Position.",
+            "Lattenweite : 320-340 mm",
+            "Querschnitte : .....",
+            "3",
+            "Zimmererarbeiten",
+            "B3.e1darf 1,00 m² Sparschalung,",
+            "Dachkonstruktion, Holz, 24",
+            "mm",
+            "Sparschalung aus Brettern, sägerau, auf vorhandene",
+            "Dachkonstruktion aus Holz.",
+            "Holzart : Fichte / Tanne / Kiefer",
+            "Brettabstand : .....",
+            "3.2 40,00 m² Konterlattung, 40/60 mm auf Dachkonstruktion",
+            "Konterlattung aus ungehobelten Latten aus Nadelholz",
+            "auf vorhandene Dachkonstruktion,",
+            "Holzfeuchte : mind. halbtrocken (< 30%)",
+            String.format(FUSS_SEITE, 2),
+            "Querschnitt : 40/60 mm",
+            "Befestigung:bis zu 8 x 300 Teilgewindeschraube",
+            "3.3 1,00 psch Einschalen der Gaubenseiten",
+            "Anbringen einer 60 mm starken",
+            "Holzweichfaserdämmplatte an den Gaubenseiten",
+            "Dachöffnung herstellen, Wechselholz und",
+            "Streichsparren liefern, abbinden und einbauen",
+            "4",
+            "Spenglerarbeiten",
+            "4.1 30,00 m Halbrunde, vorgehängte Dachrinne aus farb.",
+            "besch. Aluminium 0,7 mm stark,",
+            "Abwicklung 33 cm, große Wulst, mit verz.",
+            "Rinnenhaken im",
+            "Gefälle montieren.",
+            "(Zeitbedarf: 0 Stunde(n) + 0 Minute(n))",
+            "4.2 6,00 Stück Bogen 72° aus farb. besch. Aluminium",
+            "Durchmesser 100 mm komplett in das",
+            "Regenablaufrohr einbauen als Zulage.",
+            "4.3 40,00 m² Eindecken der Dachfläche mit beiderseits",
+            "verzinnten Edelstahlscharen 0,5",
+            "mm",
+            "dick, Bandbreite 67 cm, doppelt gefalzter Stehfalz,",
+            "Befestigung mit 6 Haften pro qm.",
+            "Auftrag erteilt:",
+            "Ort, Datum",
+            "Unterschrift Auftraggeber",
+            "Musterbank Musterstadt Zimmerei Muster GmbH mit Sitz in Musterstadt.",
+            "IBAN: DE00 1000 0000 0001 2345 67 HRB 000000, Registergericht Musterstadt");
+
+    @Test
+    public void wieEchteArbeitsanweisung() {
+        Arbeitsanweisung.Ergebnis e = Arbeitsanweisung.auswerten(WIE_ECHT, inventar(), "26-09999-AW BV Beispiel.pdf");
+        assertEquals("Erika Beispiel", e.kunde); // aus der Fußzeile vor „Arbeitsanweisung : … Seite 2“
+        List<String> kapitel = new ArrayList<>();
+        for (Arbeitsanweisung.Abschnitt a : e.abschnitte) kapitel.add(a.titel);
+        assertTrue(kapitel.toString(), !kapitel.toString().contains("CEE")); // Aufzählung ist kein Kapitel
+
+        java.util.Map<String, Aufgabe> pos = new java.util.LinkedHashMap<>();
+        for (Aufgabe a : e.aufgaben) if (a.info.startsWith("Pos. ")) pos.put(a.info.split(" · ")[0].substring(5), a);
+        // übereinander gedruckt: „A1.l4ternative“ = Alternative 1.4, „B3.e1darf“ = Bedarf 3.1
+        assertTrue(pos.keySet().toString(), pos.get("1.4").info.contains("Alternativposition"));
+        assertTrue(pos.get("3.1").info.contains("Bedarfsposition"));
+        // Lift: Kurztext ist die Aufgabe, technische Daten nicht; Angaben in der zweiten Zeile
+        assertEquals("Beispiel Lift 250 Dachdeckerlift liefern und aufbauen und abbauen\nHersteller: Beispiel", pos.get("1.3").text);
+        // Entsorgung: Kurztext, keine Abfallschlüssel
+        assertEquals("Verwertung von Holz behandelt A2-A3", pos.get("1.5").text);
+        // Beschreibung mit Angaben, Platzhalter „.....“ fallen weg
+        assertEquals("Dachlattung entfernen und nach unten abtransportieren, entsorgen in gesonderter Position\nLattenweite: 320-340 mm", pos.get("2.1").text);
+        assertEquals("Sparschalung aus Brettern, sägerau, auf vorhandene Dachkonstruktion aus Holz\nHolzart: Fichte / Tanne / Kiefer", pos.get("3.1").text);
+        // Seitenwechsel mitten in der Beschreibung: Angaben von Seite 2 gehören noch zu 3.2
+        assertEquals("Konterlattung aus ungehobelten Latten aus Nadelholz auf vorhandene Dachkonstruktion\n"
+                + "Holzfeuchte: mind. halbtrocken (< 30%) · Querschnitt: 40/60 mm · Befestigung: bis zu 8 x 300 Teilgewindeschraube", pos.get("3.2").text);
+        // umbrochene Sätze, auch mit Abkürzung („mit verz.“) und Maß-Fortsetzung („Durchmesser 100 mm …“)
+        assertEquals("Halbrunde, vorgehängte Dachrinne aus farb. besch. Aluminium 0,7 mm stark, Abwicklung 33 cm, große Wulst, mit verz. "
+                + "Rinnenhaken im Gefälle montieren", pos.get("4.1").text);
+        assertEquals("Bogen 72° aus farb. besch. Aluminium Durchmesser 100 mm komplett in das Regenablaufrohr einbauen als Zulage", pos.get("4.2").text);
+        assertEquals("Eindecken der Dachfläche mit beiderseits verzinnten Edelstahlscharen 0,5 mm dick, Bandbreite 67 cm, doppelt gefalzter "
+                + "Stehfalz, Befestigung mit 6 Haften pro qm", pos.get("4.3").text);
+        // Checkliste unter Pauschalposition: umbrochene Zeilen zusammen
+        List<String> texte = new ArrayList<>();
+        for (Aufgabe a : e.aufgaben) texte.add(a.text);
+        assertTrue(texte.toString(), texte.contains("Anbringen einer 60 mm starken Holzweichfaserdämmplatte an den Gaubenseiten"));
+        assertTrue(texte.toString(), texte.contains("Dachöffnung herstellen, Wechselholz und Streichsparren liefern, abbinden und einbauen"));
+        for (String t : texte) assertTrue(t, !t.contains("IBAN") && !t.contains("Erika") && !t.contains(".....") && !t.contains("AVV") && !t.contains("Übertrag"));
+
+        // Material: nur was man bestellt – nicht „Dachlattung entfernen“, „Verwertung“, Lift, Alternative
+        List<String> material = new ArrayList<>();
+        for (Arbeitsanweisung.Abschnitt a : e.abschnitte) for (Arbeitsanweisung.Vorschlag v : a.vorschlaege) material.add(v.name);
+        for (String m : material) assertTrue(material.toString(), !m.contains("entfernen") && !m.contains("Verwertung") && !m.contains("Lift"));
+        assertTrue(material.toString(), material.contains("Konterlattung, 40/60 mm auf Dachkonstruktion"));
+
+        // Werkzeug: kein Elektrohobel wegen „ungehobelt“, kein Feuchtemessgerät wegen „Holzfeuchte“, kein Ziegelschneider bei Blech;
+        // dafür Falzwerkzeug für den Stehfalz
+        Holzliste h = new Holzliste();
+        h.positionen.addAll(Arbeitsanweisung.positionen(e));
+        h.aufgaben.addAll(e.aufgaben);
+        List<String> w = new ArrayList<>();
+        for (Werkzeug.Vorschlag x : Werkzeug.vorschlagen(h, e.arbeitsschritte)) w.add(x.name);
+        assertTrue(w.toString(), !w.contains("Elektrohobel") && !w.contains("Feuchtemessgerät") && !w.contains("Ziegelschneider / Trennschleifer"));
+        assertTrue(w.toString(), w.contains("Falzschließer (Hand/Maschine)") && w.contains("Lötkolben"));
+    }
+
+    /** Gescanntes Bild mit „.pdf“-Endung (kam so aus dem Scanner) → verständliche Meldung statt PdfBox-Fehler. */
+    @Test
+    public void bildStattPdf() throws Exception {
+        byte[] tiff = {'I', 'I', 42, 0, 8, 0, 0, 0, 1, 2, 3};
+        byte[] jpg = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0, 16};
+        for (byte[] b : new byte[][]{tiff, jpg}) {
+            try {
+                PdfText.pruefen(new java.io.BufferedInputStream(new java.io.ByteArrayInputStream(b)));
+                org.junit.Assert.fail("hätte als Bild erkannt werden müssen");
+            } catch (java.io.IOException e) {
+                assertTrue(e.getMessage(), e.getMessage().startsWith("Das ist ein eingescanntes Bild"));
+            }
+        }
+        // echte PDF geht durch
+        PdfText.pruefen(new java.io.BufferedInputStream(new java.io.ByteArrayInputStream("%PDF-1.7\n".getBytes())));
+    }
+
     /** Ausgedachte Wartungs-AW (Positionen 1, 2, 3 ohne Kapitel) und Auftragsbestätigung mit Preisspalte. */
     static final String WARTUNG = "Zimmerei Muster GmbH - Hauptstr. 1 - 12345 Musterstadt\n"
             + "Arbeitsanweisung\nBauvorhaben : Musterweg 5 Seite :1\n"
