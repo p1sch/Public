@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Bus Berg ⇄ Starnberg</title>
+<meta name="theme-color" content="#0b6e8f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{
+  --bg:#eef3f6; --surface:#ffffff; --fg:#14232c; --muted:#5b6c77;
+  --lake:#0b6e8f; --lake-ink:#ffffff; --line:#d3dde3; --soft:#e3eff4;
+  --good:#1d7a46; --good-bg:#e2f3e8; --warn:#9a5b00; --bad:#b3261e;
+  --font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0d1a21; --surface:#14262f; --fg:#e4eef2; --muted:#93a8b3;
+  --lake:#3bb0d6; --lake-ink:#06212b; --line:#24404d; --soft:#17313d;
+  --good:#5fd08f; --good-bg:#143326; --warn:#f0b35a; --bad:#ff8a80; color-scheme:dark}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:16px;line-height:1.4;
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.wrap{max-width:560px;margin:0 auto;padding-block:14px 40px;
+  padding-left:max(14px,env(safe-area-inset-left,0px));padding-right:max(14px,env(safe-area-inset-right,0px));
+  display:flex;flex-direction:column;gap:14px}
+header{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.tabs{display:flex;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:3px;gap:3px}
+.tabs button{font:inherit;font-weight:600;border:0;background:transparent;color:var(--fg);padding:9px 14px;border-radius:9px;cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--lake);color:var(--lake-ink)}
+.clock{font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums;color:var(--lake)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}
+.decide{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.opt{border-radius:12px;padding:12px;background:var(--soft);display:flex;flex-direction:column;gap:2px;min-width:0}
+.opt.best{background:var(--good-bg);outline:2px solid var(--good)}
+.opt .lbl{font-size:.78rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.opt .big{font-size:1.6rem;font-weight:700;font-variant-numeric:tabular-nums}
+.opt .sub{font-size:.85rem;color:var(--muted)}
+.verdict{margin:12px 0 0;font-weight:600;font-size:1.05rem}
+.verdict.good{color:var(--good)}
+h2{font-size:.8rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:4px 2px 0}
+ul.list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.row{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;background:var(--surface);
+  border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.row.miss{opacity:.45}
+.line{font-weight:700;font-size:.9rem;background:var(--lake);color:var(--lake-ink);border-radius:6px;padding:3px 7px;min-width:3.2em;text-align:center}
+.mid{min-width:0}
+.mid .t{font-weight:600;font-variant-numeric:tabular-nums}
+.mid .s{font-size:.82rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.right{text-align:right;font-variant-numeric:tabular-nums}
+.right .in{font-weight:700}
+.right .arr{font-size:.82rem;color:var(--muted)}
+.chip{display:inline-block;font-size:.72rem;font-weight:700;padding:1px 6px;border-radius:99px;margin-left:4px;vertical-align:1px}
+.chip.see{background:var(--soft);color:var(--lake)}
+.chip.lra{background:var(--soft);color:var(--warn)}
+.late{color:var(--bad);font-weight:700}
+.ontime{color:var(--good)}
+.noreal{color:var(--muted)}
+footer{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:.85rem;color:var(--muted)}
+footer button{font:inherit;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:9px;padding:6px 10px;cursor:pointer}
+.walk{display:flex;align-items:center;gap:6px}
+.msg{padding:14px;border-radius:12px;background:var(--surface);border:1px solid var(--line);color:var(--muted)}
+.msg.err{color:var(--bad)}
+button:focus-visible{outline:3px solid var(--lake);outline-offset:2px}
+@media (max-width:360px){.opt .big{font-size:1.35rem}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="tabs" role="group" aria-label="Richtung">
+      <button id="tab-home" aria-pressed="false">Heimfahrt</button>
+      <button id="tab-work" aria-pressed="false">Zur Arbeit</button>
+    </div>
+    <div class="clock" id="clock">--:--</div>
+  </header>
+
+  <div id="decide-box" class="card" hidden>
+    <div class="decide">
+      <div class="opt" id="opt-see"><span class="lbl">Am Bahnhof See warten</span><span class="big" id="see-arr">–</span><span class="sub" id="see-sub"></span></div>
+      <div class="opt" id="opt-lra"><span class="lbl">Zum Landratsamt laufen</span><span class="big" id="lra-arr">–</span><span class="sub" id="lra-sub"></span></div>
+    </div>
+    <p class="verdict" id="verdict"></p>
+  </div>
+
+  <h2 id="list-title">Nächste Verbindungen</h2>
+  <div id="status" class="msg">Lade Live-Daten vom MVV …</div>
+  <ul class="list" id="list"></ul>
+
+  <footer>
+    <span id="updated">–</span>
+    <span class="walk" id="walk-box">Fußweg See → LRA:
+      <button id="walk-minus" aria-label="Fußweg kürzer">−</button><b id="walk-val">10</b> Min
+      <button id="walk-plus" aria-label="Fußweg länger">+</button></span>
+    <button id="refresh">Aktualisieren</button>
+  </footer>
+</div>
+
+<script>
+const API = "https://www.mvg.de/api/bgw-pt/v3";
+const STOP = { home: "de:09188:5362", see: "de:09188:5450", lra: "de:09188:5351" };
+const NAME = { [STOP.home]: "Grafstraße, Berg", [STOP.see]: "Bahnhof See", [STOP.lra]: "Landratsamt/Seebad" };
+const TYPES = "SCHIFF,RUFTAXI,BAHN,UBAHN,TRAM,SBAHN,BUS,REGIONAL_BUS";
+
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2, "0");
+const hm = ms => { const d = new Date(ms); return pad(d.getHours()) + ":" + pad(d.getMinutes()); };
+const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch { return d; } },
+                set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+
+let mode = store.get("mode", null) || (new Date().getHours() < 12 ? "work" : "home");
+let walk = Math.max(0, Math.min(30, parseInt(store.get("walk", "10"), 10) || 10));
+let data = null, loading = false, lastOk = 0;
+
+async function getJSON(path, params) {
+  const url = API + path + "?" + new URLSearchParams(params);
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+const routes = (from, to) => getJSON("/routes", {
+  originStationGlobalId: from, destinationStationGlobalId: to,
+  routingDateTime: new Date(Date.now() - 60000).toISOString(),
+  routingDateTimeIsArrival: "false", transportTypes: TYPES });
+const departures = st => getJSON("/departures", { globalId: st, limit: "60", transportTypes: "BUS,REGIONAL_BUS" });
+
+// Turn MVG route objects into simple trips, with realtime from the departure board where possible.
+function toTrips(conns, board, origin) {
+  const rt = new Map();
+  for (const d of board || []) rt.set(d.label + "|" + d.plannedDepartureTime, d);
+  const trips = [];
+  for (const c of conns || []) {
+    const ride = c.parts.filter(p => p.line && p.line.transportType !== "PEDESTRIAN");
+    if (!ride.length) continue;
+    const first = ride[0], last = ride[ride.length - 1];
+    if (first.from.stationGlobalId !== origin) continue;
+    const pDep = Date.parse(first.from.plannedDeparture);
+    const pArr = Date.parse(last.to.plannedDeparture || last.to.plannedArrival);
+    const live = rt.get(first.line.label + "|" + pDep);
+    let delay = null;
+    if (live && live.realtime) delay = Math.round((live.realtimeDepartureTime - pDep) / 60000);
+    else if (typeof first.from.departureDelayInMinutes === "number") delay = first.from.departureDelayInMinutes;
+    let arrDelay = typeof last.to.arrivalDelayInMinutes === "number" ? last.to.arrivalDelayInMinutes : (delay || 0);
+    const cancelled = ride.some(p => p.isCancelled) || (live && live.cancelled);
+    const viaLra = (first.intermediateStops || []).find(s => s.stationGlobalId === STOP.lra);
+    trips.push({
+      origin, line: ride.map(p => p.line.label).join(" → "), dest: first.line.destination,
+      pDep, dep: pDep + (delay || 0) * 60000, delay, arr: pArr + arrDelay * 60000,
+      changes: ride.length - 1, cancelled,
+      viaLra: viaLra ? Date.parse(viaLra.plannedDeparture) + (delay || 0) * 60000 : null,
+      viaLraKey: viaLra ? first.line.label + "|" + Date.parse(viaLra.plannedDeparture) : null,
+      key: first.line.label + "|" + pDep
+    });
+  }
+  return trips;
+}
+
+async function load() {
+  if (loading) return; loading = true;
+  $("refresh").disabled = true;
+  try {
+    if (mode === "home") {
+      const [rs, rl, bs, bl] = await Promise.all([
+        routes(STOP.see, STOP.home), routes(STOP.lra, STOP.home),
+        departures(STOP.see).catch(() => []), departures(STOP.lra).catch(() => [])]);
+      data = { mode, trips: [...toTrips(rs, bs, STOP.see), ...toTrips(rl, bl, STOP.lra)] };
+    } else {
+      const [r, b] = await Promise.all([routes(STOP.home, STOP.lra), departures(STOP.home).catch(() => [])]);
+      data = { mode, trips: toTrips(r, b, STOP.home) };
+    }
+    lastOk = Date.now();
+    $("status").hidden = true;
+  } catch (e) {
+    $("status").hidden = false;
+    $("status").className = "msg err";
+    $("status").textContent = "Keine Live-Daten erreichbar (" + e.message + "). Prüfe die Internetverbindung und tippe auf Aktualisieren.";
+  } finally {
+    loading = false; $("refresh").disabled = false; render();
+  }
+}
+
+function delayHTML(t) {
+  if (t.cancelled) return '<span class="late">fällt aus</span>';
+  if (t.delay == null) return '<span class="noreal">Plan</span>';
+  if (t.delay <= 0) return '<span class="ontime">pünktlich</span>';
+  return '<span class="late">+' + t.delay + '</span>';
+}
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function render() {
+  const now = Date.now();
+  const d = new Date();
+  $("clock").textContent = pad(d.getHours()) + ":" + pad(d.getMinutes());
+  $("tab-home").setAttribute("aria-pressed", mode === "home");
+  $("tab-work").setAttribute("aria-pressed", mode === "work");
+  $("walk-box").hidden = mode !== "home";
+  $("walk-val").textContent = walk;
+  $("updated").textContent = lastOk ? "Stand " + hm(lastOk) + " · Daten: MVV/MVG" : "–";
+  $("list-title").textContent = mode === "home" ? "Nach Hause · Grafstraße, Berg" : "Zur Arbeit · ab Grafstraße";
+
+  const list = $("list");
+  if (!data || data.mode !== mode) { list.innerHTML = ""; $("decide-box").hidden = true; return; }
+
+  const trips = data.trips
+    .filter(t => t.dep > now - 60000)
+    .map(t => {
+      const need = t.origin === STOP.lra ? walk : 0;
+      return { ...t, reach: !t.cancelled && t.dep - now >= need * 60000 };
+    })
+    .sort((a, b) => a.dep - b.dep || a.arr - b.arr);
+
+  // Decision card (home only)
+  if (mode === "home") {
+    const best = o => trips.filter(t => t.origin === o && t.reach).sort((a, b) => a.arr - b.arr || a.dep - b.dep)[0];
+    const s = best(STOP.see), l = best(STOP.lra);
+    $("decide-box").hidden = false;
+    $("see-arr").textContent = s ? "an " + hm(s.arr) : "–";
+    $("see-sub").textContent = s ? s.line + " um " + hm(s.dep) + " (in " + Math.max(0, Math.round((s.dep - now) / 60000)) + " Min)" : "keine Verbindung";
+    $("lra-arr").textContent = l ? "an " + hm(l.arr) : "–";
+    $("lra-sub").textContent = l ? l.line + " um " + hm(l.dep) + ", losgehen bis " + hm(l.dep - walk * 60000) : "nicht mehr erreichbar";
+    $("opt-see").classList.toggle("best", !!s && (!l || s.arr <= l.arr));
+    $("opt-lra").classList.toggle("best", !!l && (!s || l.arr < s.arr));
+    const v = $("verdict");
+    if (s && l && l.arr < s.arr) {
+      v.className = "verdict good";
+      v.textContent = "Lauf zum Landratsamt: " + Math.round((s.arr - l.arr) / 60000) + " Min früher daheim.";
+    } else if (s && l && s.arr === l.arr) {
+      v.className = "verdict good";
+      v.textContent = s.key === l.key || s.viaLra
+        ? "Bleib am Bahnhof See: Gleicher Bus, du sparst dir den Weg."
+        : "Beide gleich schnell: Bleib am Bahnhof See.";
+    } else if (s) {
+      v.className = "verdict good";
+      v.textContent = "Bleib am Bahnhof See" + (l ? ": " + Math.round((l.arr - s.arr) / 60000) + " Min früher daheim." : ".");
+    } else if (l) {
+      v.className = "verdict good"; v.textContent = "Lauf zum Landratsamt.";
+    } else { v.className = "verdict"; v.textContent = "Gerade keine Verbindung gefunden."; }
+  } else $("decide-box").hidden = true;
+
+  if (!trips.length) { list.innerHTML = '<li class="msg">Keine Abfahrten in den nächsten Stunden gefunden.</li>'; return; }
+  // A bus that stops at both is listed once, as its Bahnhof See departure with the LRA time added.
+  const both = new Set(trips.map(t => t.viaLraKey).filter(Boolean));
+  const shown = trips.filter(t => !(t.origin === STOP.lra && both.has(t.key)));
+  list.innerHTML = shown.slice(0, 12).map(t => {
+    const mins = Math.round((t.dep - now) / 60000);
+    const chip = mode === "home"
+      ? (t.origin === STOP.see ? '<span class="chip see">See</span>' : '<span class="chip lra">LRA</span>') : "";
+    let sub = "→ " + esc(t.dest);
+    if (t.changes) sub += " · " + t.changes + "× umsteigen";
+    if (mode === "home" && t.origin === STOP.see && t.viaLra) sub = "hält auch am LRA " + hm(t.viaLra) + " · " + sub;
+    if (mode === "home" && t.origin === STOP.lra && !t.reach && !t.cancelled) sub = "zu knapp zu Fuß · " + sub;
+    return '<li class="row' + (t.reach || mode !== "home" ? "" : " miss") + '">' +
+      '<span class="line">' + esc(t.line) + '</span>' +
+      '<div class="mid"><div class="t">' + hm(t.dep) + chip + ' ' + delayHTML(t) + '</div><div class="s">' + sub + '</div></div>' +
+      '<div class="right"><div class="in">' + (mins <= 0 ? "jetzt" : "in " + mins + " Min") + '</div><div class="arr">an ' + hm(t.arr) + '</div></div></li>';
+  }).join("");
+}
+
+function setMode(m) { mode = m; store.set("mode", m); store.set("modeAt", Date.now()); data = null; render(); $("status").hidden = false; $("status").className = "msg"; $("status").textContent = "Lade Live-Daten vom MVV …"; load(); }
+$("tab-home").onclick = () => setMode("home");
+$("tab-work").onclick = () => setMode("work");
+$("refresh").onclick = load;
+$("walk-minus").onclick = () => { walk = Math.max(0, walk - 1); store.set("walk", walk); render(); };
+$("walk-plus").onclick = () => { walk = Math.min(30, walk + 1); store.set("walk", walk); render(); };
+
+// A manual switch counts for 30 minutes; otherwise the direction follows the time of day.
+function autoMode() {
+  const at = parseInt(store.get("modeAt", "0"), 10);
+  if (Date.now() - at > 30 * 60000) mode = new Date().getHours() < 12 ? "work" : "home";
+}
+autoMode();
+render(); load();
+setInterval(render, 15000);
+setInterval(() => { if (!document.hidden) load(); }, 30000);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) return;
+  const before = mode; autoMode();
+  if (mode !== before) data = null;
+  if (mode !== before || Date.now() - lastOk > 20000) load();
+  render();
+});
+</script>
+</body>
+</html>
