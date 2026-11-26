@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Holz-CAD</title>
+<meta name="theme-color" content="#7a4a21">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Startseite: Liste der Zeichnungen -->
+<section id="home" class="screen">
+  <header class="bar">
+    <img src="icon.svg" alt="" class="logo">
+    <div class="title"><b>Holz-CAD</b><small>Aufmaß &amp; Details</small></div>
+    <button id="btnHelpHome" class="icon" title="Hilfe">?</button>
+  </header>
+  <div class="home-body">
+    <div class="home-actions">
+      <button id="btnNew" class="primary">+ Neue Zeichnung</button>
+      <label class="btn">Importieren<input type="file" id="fileImport" accept=".json,application/json" hidden></label>
+    </div>
+    <input id="search" type="search" placeholder="Suchen (Name, Baustelle)">
+    <ul id="docList"></ul>
+    <p id="emptyHint" class="empty">Noch keine Zeichnungen. Leg mit „Neue Zeichnung“ dein erstes Aufmaß oder Detail an.</p>
+  </div>
+</section>
+
+<!-- Zeichen-Editor -->
+<section id="editor" class="screen" hidden>
+  <header class="bar">
+    <button id="btnBack" class="icon" title="Zurück zur Liste">‹</button>
+    <div class="title" id="titleBox"><b id="docName"></b><small id="docSite"></small></div>
+    <button id="btnUndo" class="icon" title="Rückgängig (Strg+Z)">↶</button>
+    <button id="btnRedo" class="icon" title="Wiederholen (Strg+Y)">↷</button>
+    <button id="btnFit" class="icon" title="Alles zeigen">⤢</button>
+    <button id="btnMenu" class="icon" title="Menü">⋮</button>
+  </header>
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="chips">
+      <button data-chip="grid">Raster</button>
+      <button data-chip="snap">Fang</button>
+      <button data-chip="ortho">∠</button>
+      <button data-chip="labels">Längen</button>
+      <button data-chip="unit">mm</button>
+      <select id="layerSel" title="Aktive Ebene"></select>
+    </div>
+    <div id="coords"></div>
+  </div>
+  <div id="panel"></div>
+  <nav id="tools"></nav>
+</section>
+
+<!-- Menü -->
+<div id="menu" class="menu" hidden>
+  <button data-m="rename">Name / Baustelle ändern</button>
+  <button data-m="share">Als Bild teilen</button>
+  <button data-m="png">Bild speichern (PNG)</button>
+  <button data-m="print">Drucken / PDF</button>
+  <button data-m="dxf">DXF für CAD exportieren</button>
+  <button data-m="json">Zeichnung exportieren (Datei)</button>
+  <button data-m="clear" class="danger">Alles löschen</button>
+  <button data-m="help">Hilfe</button>
+</div>
+
+<dialog id="dlg">
+  <form method="dialog" id="dlgForm">
+    <h3 id="dlgTitle"></h3>
+    <div id="dlgBody"></div>
+    <div class="dlg-actions">
+      <button value="cancel" type="submit" class="btn">Abbrechen</button>
+      <button value="ok" type="submit" class="primary" id="dlgOk">OK</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" hidden></div>
+<div id="print"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
