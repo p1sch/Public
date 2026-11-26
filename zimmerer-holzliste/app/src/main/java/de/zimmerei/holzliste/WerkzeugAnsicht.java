@@ -173,6 +173,7 @@ final class WerkzeugAnsicht {
                     lesen.run();
                     if (w.name.isEmpty()) return;
                     if (idx < 0) liste.werkzeug.add(w); else liste.werkzeug.set(idx, w);
+                    if (idx < 0) merken(act, liste, w.name);
                     geaendert.run();
                     // Neues Werkzeug: gleich das Fenster für das nächste öffnen (beenden mit „Abbrechen“)
                     if (idx < 0) {
@@ -185,6 +186,7 @@ final class WerkzeugAnsicht {
             lesen.run();
             if (!w.name.isEmpty()) {
                 liste.werkzeug.add(w);
+                merken(act, liste, w.name);
                 geaendert.run();
             }
             bearbeiten(act, liste, -1, geaendert);
@@ -198,7 +200,8 @@ final class WerkzeugAnsicht {
     /** Vorschläge (speziell für diese Baustelle) + Standard-Ausrüstung als ein Haken. */
     static void vorschlaege(Activity act, Holzliste liste, List<String> zusatz, Runnable geaendert) {
         List<String> std = standard(act);
-        List<Werkzeug.Vorschlag> v = Werkzeug.vorschlagen(liste, zusatz, std);
+        Werkzeug.Erfahrung erf = Werkzeug.Erfahrung.laden(act);
+        List<Werkzeug.Vorschlag> v = Werkzeug.vorschlagen(liste, zusatz, std, erf);
         List<String> stdFehlt = new ArrayList<>();
         for (String s : std) {
             boolean da = false;
@@ -217,7 +220,7 @@ final class WerkzeugAnsicht {
         box.addView(info);
         List<CheckBox> boxen = new ArrayList<>();
         for (Werkzeug.Vorschlag x : v) {
-            CheckBox c = AwImport.checkbox(act, x.name, x.grund, true, false);
+            CheckBox c = AwImport.checkbox(act, x.name, x.grund + (x.gewaehlt ? "" : " · meist abgewählt"), x.gewaehlt, false);
             box.addView(c);
             boxen.add(c);
         }
@@ -230,10 +233,24 @@ final class WerkzeugAnsicht {
             ((LinearLayout.LayoutParams) stdBox.getLayoutParams()).topMargin = Ui.dp(act, 12);
             box.addView(stdBox);
         }
+        TextView lernen = Ui.text(act, "🧠 Die App lernt mit: Was ihr abwählt, wird seltener vorgeschlagen; Werkzeug, das ihr "
+                + "selbst dazuschreibt, kommt bei ähnlichen Baustellen von allein.  Zurücksetzen", 12, Ui.GRAU, false);
+        lernen.setPadding(0, Ui.dp(act, 14), 0, 0);
+        lernen.setOnClickListener(x -> new AlertDialog.Builder(act).setMessage("Alles Gelernte zu Werkzeug-Vorschlägen vergessen?")
+                .setPositiveButton("Vergessen", (d, w) -> {
+                    Werkzeug.Erfahrung.vergessen(act);
+                    Toast.makeText(act, "Vergessen – ab jetzt wieder die Standard-Vorschläge", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("Abbrechen", null).show());
+        box.addView(lernen);
         CheckBox stdF = stdBox;
         new AlertDialog.Builder(act).setTitle("💡 Werkzeug-Vorschläge").setView(sv)
                 .setPositiveButton("Übernehmen", (d, w) -> {
                     int n = 0;
+                    boolean[] angehakt = new boolean[v.size()];
+                    for (int i = 0; i < v.size(); i++) angehakt[i] = boxen.get(i).isChecked();
+                    erf.entschieden(v, angehakt); // die App lernt, was ihr wirklich mitnehmt
+                    erf.speichern(act);
                     for (int i = 0; i < v.size(); i++) {
                         if (!boxen.get(i).isChecked()) continue;
                         Werkzeug neu = new Werkzeug(v.get(i).name, v.get(i).grund);
@@ -254,6 +271,13 @@ final class WerkzeugAnsicht {
                 })
                 .setNeutralButton("Standard anpassen", (d, w) -> standardBearbeiten(act, () -> vorschlaege(act, liste, zusatz, geaendert)))
                 .setNegativeButton("Abbrechen", null).show();
+    }
+
+    /** Von Hand hinzugefügtes Werkzeug merken, damit es bei ähnlichen Baustellen vorgeschlagen wird. */
+    private static void merken(Activity act, Holzliste liste, String name) {
+        Werkzeug.Erfahrung erf = Werkzeug.Erfahrung.laden(act);
+        erf.selbstHinzugefuegt(liste, name);
+        erf.speichern(act);
     }
 
     private static TextView label(Activity act, String s) {

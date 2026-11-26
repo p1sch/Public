@@ -366,6 +366,66 @@ public class ArbeitsanweisungTest {
         assertTrue(out.size() > 1000);
     }
 
+    /** Ausgedachte AW, bei der unter den Materialpositionen beschrieben ist, was zu tun ist (Langtext). */
+    static final String MIT_LANGTEXT = String.join("\n",
+            "Zimmerei Muster GmbH - Hauptstr. 1 - 12345 Musterstadt",
+            "Arbeitsanweisung",
+            "Bauvorhaben : Musterweg 5, 12345 Musterstadt Seite :1",
+            "Pos. Menge Einh. Beschreibung",
+            "2",
+            "Zimmererarbeiten",
+            "2.1 12,00 m² Holzfaserdämmplatte 60 mm",
+            "Liefern und Verlegen der Holzfaserdämmplatten auf der",
+            "vorhandenen Schalung, Stöße dicht stoßen.",
+            "Bedarf",
+            "2.2 20,00 LFM Konstruktionsvollholz Fichte",
+            "120x120x5000 mm",
+            "Neue Stützen unter dem Balkon setzen und mit",
+            "Zimmerei Muster GmbH - Hauptstr. 1 - 12345 Musterstadt",
+            "Arbeitsanweisung",
+            "Bauvorhaben : Musterweg 5, 12345 Musterstadt Seite :2",
+            "Pos. Menge Einh. Beschreibung",
+            "Winkelverbindern am Fundament verschrauben.",
+            "Hinweis: Statik beachten, Abstände laut",
+            "Plan einhalten.",
+            "2.3 30,00 LFM Balkonbretter Fi./Ta. 26x142x5100 mm",
+            "2.4 1,00 psch Baustelle räumen",
+            "Reinigen der Arbeitsfläche");
+
+    @Test
+    public void aufgabenMitBeschreibung() {
+        Arbeitsanweisung.Ergebnis e = Arbeitsanweisung.auswerten(MIT_LANGTEXT, inventar(), "26-00002-AW BV Muster Balkon.pdf");
+        java.util.Map<String, Aufgabe> nachInfo = new java.util.LinkedHashMap<>();
+        for (Aufgabe a : e.aufgaben) nachInfo.put(a.info, a);
+        Aufgabe daemm = nachInfo.get("Pos. 2.1 · 12 m² · Holzfaserdämmplatte 60 mm");
+        assertEquals(nachInfo.keySet().toString(), "Liefern und Verlegen der Holzfaserdämmplatten auf der vorhandenen Schalung, Stöße dicht stoßen", daemm.text);
+        // Seitenkopf mitten in der Beschreibung und der Hinweis werden übersprungen, Maße stehen nicht im Aufgabentext
+        Aufgabe stuetzen = nachInfo.get("Pos. 2.2 · 20 m · Konstruktionsvollholz Fichte 120x120x5000 mm");
+        assertEquals("Neue Stützen unter dem Balkon setzen und mit Winkelverbindern am Fundament verschrauben", stuetzen.text);
+        // ohne Beschreibung bleibt es beim Material
+        Aufgabe bretter = nachInfo.get("Pos. 2.3 · 30 m");
+        assertEquals("Balkonbretter Fi./Ta. 26x142x5100 mm", bretter.text);
+        assertEquals("Zimmererarbeiten", bretter.abschnitt);
+        // Arbeitsposition wie bisher: Position + Schritte darunter
+        List<String> texte = new ArrayList<>();
+        for (Aufgabe a : e.aufgaben) texte.add(a.text);
+        assertTrue(texte.toString(), texte.contains("Baustelle räumen"));
+        assertTrue(texte.toString(), texte.contains("Reinigen der Arbeitsfläche"));
+        for (String t : texte) assertTrue(t, !t.contains("Seite") && !t.contains("Statik") && !t.contains("Bedarf"));
+        // Materialliste unverändert: Vorschläge mit Kurztext und Maßen
+        List<Arbeitsanweisung.Vorschlag> v = e.abschnitte.get(0).vorschlaege;
+        assertEquals(3, v.size());
+        assertEquals(12.0, v.get(1).b, 0);
+        assertEquals(5.0, v.get(1).laengeM, 0);
+
+        // Werkzeug: die Beschreibung bringt die Arbeit mit („verschrauben“ → Akkuschrauber ist Standard, „Fundament“ → Bohrhammer)
+        Holzliste h = new Holzliste();
+        for (Aufgabe a : e.aufgaben) h.aufgaben.add(a);
+        List<String> w = new ArrayList<>();
+        for (Werkzeug.Vorschlag x : Werkzeug.vorschlagen(h, null)) w.add(x.name);
+        assertTrue(w.toString(), w.contains("Bohrhammer"));
+    }
+
     /** Ausgedachte Wartungs-AW (Positionen 1, 2, 3 ohne Kapitel) und Auftragsbestätigung mit Preisspalte. */
     static final String WARTUNG = "Zimmerei Muster GmbH - Hauptstr. 1 - 12345 Musterstadt\n"
             + "Arbeitsanweisung\nBauvorhaben : Musterweg 5 Seite :1\n"

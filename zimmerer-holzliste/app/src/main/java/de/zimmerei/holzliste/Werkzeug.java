@@ -158,6 +158,14 @@ public class Werkzeug {
      * Werkzeug wegen Material = ROT (speziell, z. B. Schaumpistole), wegen Arbeitsschritten = GELB.
      */
     public static List<Vorschlag> vorschlagen(Holzliste h, List<String> zusatzText, List<String> standard) {
+        return vorschlagen(h, zusatzText, standard, null);
+    }
+
+    /**
+     * Wie oben, dazu die Erfahrung des Betriebs: Was meistens abgewählt wird, ist nicht mehr vorangehakt (und fällt nach
+     * mehrmaligem Abwählen ganz weg); was ihr bei ähnlichen Baustellen selbst dazugeschrieben habt, wird vorgeschlagen.
+     */
+    public static List<Vorschlag> vorschlagen(Holzliste h, List<String> zusatzText, List<String> standard, Erfahrung erf) {
         Map<String, Vorschlag> out = new LinkedHashMap<>();
         java.util.Set<String> vorhanden = new java.util.HashSet<>();
         for (Werkzeug w : h.werkzeug) vorhanden.add(schluessel(w.name));
@@ -186,10 +194,158 @@ public class Werkzeug {
                 if (m.find()) for (String w : r.werkzeuge) add(out, vorhanden, w, "wegen „" + kurz(t) + "“", GELB);
             }
         }
+        if (erf != null) {
+            // aus eurer Erfahrung: selbst dazugeschriebenes Werkzeug bei ähnlichen Baustellen
+            java.util.Set<String> merk = merkmale(h, zusatzText);
+            for (Map.Entry<String, Map<String, Integer>> e : erf.eigen.entrySet()) {
+                String best = null;
+                int n = 0;
+                for (String m : merk) {
+                    Integer c = e.getValue().get(m);
+                    if (c != null && c > n) { n = c; best = m; }
+                }
+                if (n >= Erfahrung.AB_WANN) add(out, vorhanden, erf.name(e.getKey()), "aus eurer Erfahrung: schon " + n + "× bei „" + best + "“", GELB);
+            }
+            // oft abgewählt: nicht mehr vorangehakt bzw. ganz weg
+            for (java.util.Iterator<Map.Entry<String, Vorschlag>> it = out.entrySet().iterator(); it.hasNext(); ) {
+                Map.Entry<String, Vorschlag> e = it.next();
+                int ab = erf.ab.getOrDefault(e.getKey(), 0), an = erf.an.getOrDefault(e.getKey(), 0);
+                if (ab >= Erfahrung.WEG_AB && an == 0) it.remove();
+                else if (ab > an) e.getValue().gewaehlt = false;
+            }
+        }
         List<Vorschlag> l = new ArrayList<>(out.values());
         // Wichtigstes zuerst (stabil: innerhalb gleicher Priorität bleibt die Reihenfolge)
         java.util.Collections.sort(l, (a, b) -> Integer.compare(b.prio, a.prio));
         return l;
+    }
+
+    /**
+     * Woran man ähnliche Baustellen erkennt: Kategorien des Materials (Holz, Platten, Dämmung …) und Arbeiten aus den
+     * Texten (Demontage, Dach, Fenster …) – jeweils als lesbares Wort.
+     */
+    static java.util.Set<String> merkmale(Holzliste h, List<String> zusatzText) {
+        java.util.Set<String> m = new java.util.TreeSet<>();
+        for (Position p : h.positionen) {
+            if (p.isTitel()) continue;
+            if (p.isHolz() || p.isLfm()) m.add("Holz");
+            else if (p.isPlatte()) m.add("Platten");
+            else {
+                String k = Kategorien.zuordnen(p.bezeichnung + " " + p.holzart);
+                if (k != null && !k.isEmpty() && !"Sonstiges".equals(k)) m.add(k);
+            }
+        }
+        List<String> texte = new ArrayList<>();
+        for (Aufgabe x : h.aufgaben) texte.add(x.text);
+        if (h.notiz != null) texte.add(h.notiz);
+        if (h.bauteil != null) texte.add(h.bauteil);
+        if (zusatzText != null) texte.addAll(zusatzText);
+        for (String t : texte) {
+            String k = t.toLowerCase(Locale.GERMANY);
+            for (Regel r : ARBEIT) {
+                Matcher x = r.muster.matcher(k);
+                if (x.find()) m.add(x.group().trim());
+            }
+        }
+        return m;
+    }
+
+    /**
+     * Was der Betrieb mit den Vorschlägen macht – gespeichert auf dem Handy, damit die Vorschläge mit der Zeit passen.
+     * ab/an: wie oft ein Vorschlag abgewählt bzw. übernommen wurde; eigen: selbst dazugeschriebenes Werkzeug und bei
+     * welchen Merkmalen der Baustelle.
+     */
+    public static final class Erfahrung {
+        static final int AB_WANN = 2;  // eigenes Werkzeug ab dem 2. Mal bei gleichem Merkmal vorschlagen
+        static final int WEG_AB = 3;   // nach 3× abwählen (und nie übernommen) nicht mehr vorschlagen
+
+        final Map<String, Integer> ab = new java.util.HashMap<>(), an = new java.util.HashMap<>();
+        final Map<String, Map<String, Integer>> eigen = new java.util.TreeMap<>();
+        final Map<String, String> namen = new java.util.HashMap<>();
+
+        String name(String schluessel) { return namen.getOrDefault(schluessel, schluessel); }
+
+        /** Nach „Übernehmen“ im Vorschlagsfenster: was blieb angehakt, was nicht. */
+        public void entschieden(List<Vorschlag> v, boolean[] angehakt) {
+            for (int i = 0; i < v.size(); i++) {
+                Map<String, Integer> m = angehakt[i] ? an : ab;
+                String k = schluessel(v.get(i).name);
+                m.put(k, m.getOrDefault(k, 0) + 1);
+            }
+        }
+
+        /** Werkzeug von Hand hinzugefügt: für die Merkmale dieser Baustelle merken. */
+        public void selbstHinzugefuegt(Holzliste h, String name) {
+            String k = schluessel(name);
+            if (k.isEmpty()) return;
+            namen.put(k, name.trim());
+            Map<String, Integer> m = eigen.computeIfAbsent(k, x -> new java.util.TreeMap<>());
+            for (String merk : merkmale(h, null)) m.put(merk, m.getOrDefault(merk, 0) + 1);
+            // wer es von Hand dazuschreibt, will es: zählt auch als übernommen
+            an.put(k, an.getOrDefault(k, 0) + 1);
+        }
+
+        public org.json.JSONObject toJson() throws org.json.JSONException {
+            org.json.JSONObject o = new org.json.JSONObject();
+            o.put("ab", new org.json.JSONObject(ab));
+            o.put("an", new org.json.JSONObject(an));
+            org.json.JSONObject e = new org.json.JSONObject();
+            for (Map.Entry<String, Map<String, Integer>> x : eigen.entrySet()) e.put(x.getKey(), new org.json.JSONObject(x.getValue()));
+            o.put("eigen", e);
+            o.put("namen", new org.json.JSONObject(namen));
+            return o;
+        }
+
+        public static Erfahrung fromJson(org.json.JSONObject o) {
+            Erfahrung f = new Erfahrung();
+            if (o == null) return f;
+            zahlen(o.optJSONObject("ab"), f.ab);
+            zahlen(o.optJSONObject("an"), f.an);
+            org.json.JSONObject e = o.optJSONObject("eigen");
+            if (e != null) for (java.util.Iterator<String> it = e.keys(); it.hasNext(); ) {
+                String k = it.next();
+                Map<String, Integer> m = new java.util.TreeMap<>();
+                zahlen(e.optJSONObject(k), m);
+                f.eigen.put(k, m);
+            }
+            org.json.JSONObject n = o.optJSONObject("namen");
+            if (n != null) for (java.util.Iterator<String> it = n.keys(); it.hasNext(); ) {
+                String k = it.next();
+                f.namen.put(k, n.optString(k, k));
+            }
+            return f;
+        }
+
+        private static void zahlen(org.json.JSONObject o, Map<String, Integer> m) {
+            if (o == null) return;
+            for (java.util.Iterator<String> it = o.keys(); it.hasNext(); ) {
+                String k = it.next();
+                m.put(k, o.optInt(k, 0));
+            }
+        }
+
+        private static final String PREF = "werkzeug_erfahrung";
+
+        public static Erfahrung laden(android.content.Context c) {
+            try {
+                return fromJson(new org.json.JSONObject(c.getSharedPreferences(PREF, android.content.Context.MODE_PRIVATE).getString("daten", "{}")));
+            } catch (org.json.JSONException e) {
+                return new Erfahrung();
+            }
+        }
+
+        public void speichern(android.content.Context c) {
+            try {
+                c.getSharedPreferences(PREF, android.content.Context.MODE_PRIVATE).edit().putString("daten", toJson().toString()).apply();
+            } catch (org.json.JSONException ignored) {
+                // nur Komfort
+            }
+        }
+
+        /** Alles vergessen (Menü in den Werkzeug-Vorschlägen). */
+        public static void vergessen(android.content.Context c) {
+            c.getSharedPreferences(PREF, android.content.Context.MODE_PRIVATE).edit().clear().apply();
+        }
     }
 
     /** Alle bekannten Werkzeugnamen (für die Eingabe-Vorschläge). */

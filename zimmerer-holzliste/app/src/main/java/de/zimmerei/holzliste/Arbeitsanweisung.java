@@ -516,14 +516,23 @@ public final class Arbeitsanweisung {
         }
         text = text.replaceAll("(?i),\\s*standard$", "").replaceAll("[,;]+$", "").trim();
         String tk = text.toLowerCase(Locale.GERMANY);
+        boolean lohn = LOHN_EINHEIT.matcher(einheit).matches() || LOHN_TEXT.matcher(tk).find() || text.length() < 3;
+        // Materialposition: die Beschreibung darunter (Langtext) sagt, was zu tun ist – sie wird die Aufgabe
+        String langtext = "";
+        if (!lohn) {
+            int[] ende = {i};
+            langtext = langtext(zeilen, ende);
+            i = ende[0];
+        }
         // To-do: jede Position außer Stundensätzen, Anfahrt und Kostenschätzungen
         if (text.length() >= 3 && !KEINE_AUFGABE.matcher(tk).find()) {
             String e = Einheit.norm(einheit);
             if (e.equalsIgnoreCase("psch") || e.equalsIgnoreCase("pausch") || e.equalsIgnoreCase("pauschal")) e = "pauschal";
             String info = "Pos. " + nr + (menge == null ? "" : " · " + ("pauschal".equals(e) ? e : Fmt.mengeText(menge) + (e.isEmpty() ? "" : " " + e)));
-            erg.aufgaben.add(new Aufgabe(akt == null ? "" : akt.titel, text, info));
+            if (!langtext.isEmpty()) info += " · " + kurz(text);
+            erg.aufgaben.add(new Aufgabe(akt == null ? "" : akt.titel, langtext.isEmpty() ? text : langtext, info));
         }
-        if (LOHN_EINHEIT.matcher(einheit).matches() || LOHN_TEXT.matcher(tk).find() || text.length() < 3) {
+        if (lohn) {
             erg.uebersprungen++;
             // Bei Arbeitspositionen ist die Beschreibung darunter die eigentliche Checkliste („Reinigen der Dachrinnen …“)
             if (!KEINE_AUFGABE.matcher(tk).find()) i = beschreibungAlsAufgaben(nr, zeilen, i, erg, akt);
@@ -536,6 +545,46 @@ public final class Arbeitsanweisung {
         }
         akt.vorschlaege.add(lvVorschlag(nr, menge, einheit, text));
         return i;
+    }
+
+    // Kopf einer Folgeseite mitten in einer Position („Pos. Menge Einh. Beschreibung“, „Seite :2“ …) – überspringen
+    private static final Pattern SEITENKOPF = Pattern.compile("(?i)^(pos\\.?\\s+menge|arbeitsanweisung$|bauvorhaben\\s*:|übertrag|.*\\bseite\\s*:?\\s*\\d+\\s*$)");
+    // Zeilen, die keine Beschreibung sind: nur Maße („120x120x5000 mm“), nur Preise, „Bedarf“
+    private static final Pattern KEIN_LANGTEXT = Pattern.compile("(?i)^(\\d{1,4}\\s*[x×*/]\\s*\\d.*|[\\d.,\\s€]+|bedarf|nach bedarf)$");
+
+    /**
+     * Beschreibung (Langtext) unter einer Materialposition, zu einem Text zusammengefügt. ende[0]: in = Index der
+     * Positionszeile, out = letzte gelesene Zeile. Leer, wenn die Position keine Beschreibung hat.
+     */
+    private static String langtext(List<String> zeilen, int[] ende) {
+        int i = ende[0];
+        StringBuilder sb = new StringBuilder();
+        boolean hinweisLaeuft = false;
+        while (i + 1 < zeilen.size()) {
+            String z = zeilen.get(i + 1).trim();
+            Matcher p = LV_POS.matcher(z);
+            if (p.matches() && (LV_MENGE.matcher(p.group(2).trim()).matches() || p.group(2).trim().isEmpty())) break;
+            Matcher t = LV_TITEL.matcher(z);
+            if (t.matches() && (t.group(2) == null || Character.isUpperCase(t.group(2).charAt(0)))) break;
+            if (SEITENKOPF.matcher(z).find()) { i++; continue; } // Kopf einer Folgeseite
+            if (FUSS.matcher(z).find() && !seitenkopfFolgt(zeilen, i + 2)) break; // Briefkopf einer Folgeseite: weiterlesen
+            i++;
+            if (FUSS.matcher(z).find()) continue;
+            boolean endetMitPunkt = z.endsWith(".");
+            if (hinweisLaeuft || HINWEIS.matcher(z).find()) { hinweisLaeuft = !endetMitPunkt; continue; }
+            if (KEIN_LANGTEXT.matcher(z).matches() || woerter(z) < 2) continue;
+            sb.append(sb.length() > 0 ? " " : "").append(z);
+        }
+        ende[0] = i;
+        String l = sb.toString().replaceAll("\\s{2,}", " ").replaceAll("[.;,]+$", "").trim();
+        if (l.length() > 300) l = l.substring(0, 297).trim() + "…";
+        return l;
+    }
+
+    /** Folgt in den nächsten Zeilen ein Seitenkopf („Arbeitsanweisung“, „Bauvorhaben :“, „Pos. Menge …“)? */
+    private static boolean seitenkopfFolgt(List<String> zeilen, int ab) {
+        for (int k = ab; k < Math.min(zeilen.size(), ab + 4); k++) if (SEITENKOPF.matcher(zeilen.get(k).trim()).find()) return true;
+        return false;
     }
 
     /** Zeilen unter einer Arbeitsposition als einzelne Aufgaben; Folgezeilen in Kleinschrift hängen am vorigen Punkt. */
